@@ -20,7 +20,13 @@ if (process.env.DATABASE_URL) {
     ssl: process.env.PGSSL === 'off' ? false : { rejectUnauthorized: false },
   });
   kv = {
-    async init() { await pool.query('create table if not exists kv(key text primary key, value jsonb not null)'); },
+    async init() {
+      try { await pool.query('select 1 from kv limit 1'); }
+      catch (e) {
+        if (e.code !== '42P01') throw e;
+        await pool.query('create table if not exists kv(key text primary key, value jsonb not null)');
+      }
+    },
     async get(k) { const r = await pool.query('select value from kv where key=$1', [k]); return r.rows[0] ? r.rows[0].value : null; },
     async set(k, v) { await pool.query('insert into kv(key,value) values($1,$2) on conflict(key) do update set value=excluded.value', [k, JSON.stringify(v)]); },
     async del(k) { await pool.query('delete from kv where key=$1', [k]); },
