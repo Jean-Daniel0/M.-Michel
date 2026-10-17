@@ -81,7 +81,7 @@ function limited(req) {
 
 /* ---------- Quiz ---------- */
 const SUBJECTS = ['Informatique', 'Éducation à la citoyenneté', 'Éducation esthétique et artistique', 'Autre'];
-const PALETTE = new Set(['#111111', '#16358c', '#b80f2b', '#15704a', '#c25a00', '#6b2fa0', '#555555']);
+const PALETTE = new Set(['#ffffff', '#111111', '#16358c', '#b80f2b', '#15704a', '#c25a00', '#6b2fa0', '#555555']);
 const hex2 = n => Math.max(0, Math.min(255, parseInt(n) || 0)).toString(16).padStart(2, '0');
 function sanitizeBrief(html) {
   html = String(html || '').slice(0, 40000).replace(/<(script|style)[\s\S]*?<\/\1\s*>/gi, '');
@@ -330,6 +330,39 @@ app.get('/api/classes', auth, wrap(async (req, res) => {
   cls.forEach((c, i) => { c.n = counts[i]; });
   cls.sort((a, b) => (a.created || 0) - (b.created || 0));
   res.json({ classes: cls });
+}));
+app.get('/api/classes/:id/stats', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const qs = (await classQuizzes(c.id)).filter(q => q.qs.length);
+  const eff = (a, i, man) => { const m = man && man[i]; if (m === 0 || m === 1) return m; return a.ok === true ? 1 : a.ok === false ? 0 : null; };
+  const mean = v => v.length ? Math.round(v.reduce((x, y) => x + y, 0) / v.length) : null;
+  const per = [], students = {}, all = [];
+  let flagged = 0;
+  for (const q of qs) {
+    const keys = await kv.list('att:' + q.id + ':');
+    const atts = (await Promise.all(keys.map(k => kv.get(k)))).filter(a => a && a.finished);
+    const hard = {}, pcts = [];
+    for (const a of atts) {
+      let s = 0, g = 0;
+      a.answers.forEach((x, i) => {
+        const e = eff(x, i, a.manual); if (e === null) return;
+        g++; if (e === 1) s++;
+        const h = hard[x.q] || (hard[x.q] = { q: x.q, seen: 0, wrong: 0 });
+        h.seen++; if (e === 0) h.wrong++;
+      });
+      if (g) { const p = Math.round(100 * s / g); pcts.push(p); all.push(p); (students[a.name] = students[a.name] || []).push(p); }
+      const f = a.flags || {}; if (f.paste || f.leave || f.jump) flagged++;
+    }
+    per.push({
+      id: q.id, title: q.title, mode: q.mode, copies: atts.length, avg: mean(pcts),
+      min: pcts.length ? Math.min(...pcts) : null, max: pcts.length ? Math.max(...pcts) : null,
+      hard: Object.values(hard).filter(h => h.wrong > 0).map(h => ({ q: h.q.slice(0, 200), seen: h.seen, wrong: h.wrong, pct: Math.round(100 * h.wrong / h.seen) }))
+        .sort((x, y) => y.pct - x.pct || y.wrong - x.wrong).slice(0, 5),
+    });
+  }
+  const low = Object.entries(students).map(([name, v]) => ({ name, avg: mean(v), n: v.length })).filter(s => s.avg < 50).sort((a, b) => a.avg - b.avg).slice(0, 5);
+  res.json({ class: { id: c.id, name: c.name }, copies: all.length, avg: mean(all), flagged, per, low });
 }));
 app.get('/api/classes/:id', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());

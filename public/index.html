@@ -22,6 +22,19 @@ h1{font-size:2.4rem}
 h2{font-size:1.45rem}
 h3{font-size:1.1rem}
 .lead{color:var(--mute);margin:0 0 1.4em;max-width:36ch}
+.banner{position:relative;border-radius:20px;overflow:hidden;margin:6px 0 24px;min-height:440px;color:#fff;background:#16358c;isolation:isolate;border-bottom:5px solid #c4122f}
+.banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 6%;z-index:-2}
+.banner::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(10,20,60,0) 0%,rgba(10,20,60,0) 34%,rgba(10,20,60,.8) 60%,rgba(10,20,60,.95) 100%)}
+.banner .over{padding:250px 20px 22px}
+.banner .eyebrow{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#ffd9df;margin:0 0 4px}
+.banner h1{color:#fff;font-size:2rem;margin:0 0 .4em;text-shadow:0 2px 12px rgba(0,0,0,.45)}
+.banner p{margin:0 0 .7em;color:#fff;max-width:46ch;font-size:.98rem;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.banner p:last-child{margin-bottom:0}
+.sw.white{box-shadow:inset 0 0 0 1.5px var(--line)}
+.paper.editor span[style*="255, 255, 255"],.paper.editor span[style*="#ffffff"]{background:#d9deea}
+.bar2{height:10px;background:var(--line);border-radius:9px;overflow:hidden;margin:6px 0 10px}
+.bar2 i{display:block;height:100%;background:var(--blue)}
+.bar2.bad i{background:var(--red)}
 .portrait{position:relative;margin:6px 0 28px;max-width:340px}
 .portrait img{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;object-position:50% 12%;border-radius:20px;box-shadow:9px 9px 0 var(--blue)}
 .portrait figcaption{position:absolute;left:-6px;bottom:20px;max-width:88%;background:var(--card);color:var(--ink);padding:10px 16px;border-radius:0 12px 12px 0;border-left:5px solid var(--red);box-shadow:0 8px 20px rgba(0,0,0,.28)}
@@ -128,7 +141,7 @@ const fmtT=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+
 const fmtDate=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[3]+'/'+m[2]+'/'+m[1]:''};
 const SUBJECTS=['Informatique','Éducation à la citoyenneté','Éducation esthétique et artistique','Autre'];
 const TYPE={quiz:'Quiz',devoir:'Devoir',libelle:'Consigne'};
-const COLORS=[['Noir','#111111'],['Bleu','#16358c'],['Rouge','#b80f2b'],['Vert','#15704a'],['Orange','#c25a00'],['Violet','#6b2fa0'],['Gris','#555555']];
+const COLORS=[['Blanc','#ffffff'],['Noir','#111111'],['Bleu','#16358c'],['Rouge','#b80f2b'],['Vert','#15704a'],['Orange','#c25a00'],['Violet','#6b2fa0'],['Gris','#555555']];
 let S={view:'home',err:'',busy:false};
 let timerId=null;
 const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.','Réfléchis avec tes propres mots.','Tu y es presque, courage !'];
@@ -136,7 +149,7 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
 function render(){
-  const v={home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  const v={stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
   document.body.classList.toggle('white',S.view==='brief');
@@ -148,14 +161,16 @@ function setErr(m){S.err=m;S.busy=false;render()}
 
 /* ---------- Accueil : un seul code pour tout le monde ---------- */
 function vHome(){return `
-<figure class="portrait">
-<img src="/michel.webp" width="640" height="640" alt="Jean-Daniel MICHEL, professeur">
-<figcaption><b>Jean-Daniel MICHEL</b><span>Professeur</span></figcaption>
-</figure>
-<h1>M.Michel</h1>
-<p class="about">Bienvenue sur la plateforme de Jean-Daniel MICHEL, professeur d'informatique, d'éducation à la citoyenneté et d'éducation esthétique et artistique.</p>
-<p class="about">Ici, chaque classe retrouve ses devoirs, ses quiz et ses consignes au même endroit, avec un code qui lui est propre. Apprendre, c'est d'abord comprendre : prends le temps de lire, de chercher et de répondre avec tes propres mots, car c'est ainsi que l'on progresse vraiment.</p>
-<p class="about">Entre ton code ci-dessous pour retrouver tes travaux.</p>
+<section class="banner">
+<img src="/michel.webp" width="960" height="960" alt="Jean-Daniel MICHEL, professeur">
+<div class="over">
+<p class="eyebrow">M.Michel · Professeur</p>
+<h1>Jean-Daniel MICHEL</h1>
+<p>Bienvenue sur la plateforme de Jean-Daniel MICHEL, professeur d'informatique, d'éducation à la citoyenneté et d'éducation esthétique et artistique.</p>
+<p>Ici, chaque classe retrouve ses devoirs, ses quiz et ses consignes au même endroit, avec un code qui lui est propre. Apprendre, c'est d'abord comprendre : prends le temps de lire, de chercher et de répondre avec tes propres mots, car c'est ainsi que l'on progresse vraiment.</p>
+<p>Entre ton code ci-dessous pour retrouver tes travaux.</p>
+</div>
+</section>
 ${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commencer.',150)}
 <label for="code">Ton code</label>
 <input type="text" id="code" autocomplete="off" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')homeGo()">
@@ -410,6 +425,7 @@ function vTClass(){
 <p class="hint" style="margin:0 0 16px">Donne ce code à tes élèves : il ouvre la liste de leurs travaux.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
+<button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
 ${L.length?L.map(q=>`<div class="card">
 <h3>${esc(q.title)}</h3>
 <p style="margin:0 0 8px"><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}</p>
@@ -422,6 +438,32 @@ async function delQuiz(id){
   if(!confirm('Supprimer ce travail et toutes ses copies ?'))return;
   try{await api('/api/quizzes/'+id,'DELETE');openClass(S.tc.class.id)}catch(e){S.err=e.message;render()}
 }
+
+/* ---------- Professeur : statistiques de la classe ---------- */
+async function openStats(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{S.st=await api('/api/classes/'+id+'/stats');S.err='';S.view='stats';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function vStats(){
+  const t=S.st;
+  const bar=(v,bad)=>`<div class="bar2 ${bad?'bad':''}"><i style="width:${v||0}%"></i></div>`;
+  return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
+${mascot(t.copies?'happy':'think',t.copies?'Voici où en est ta classe.':'Pas encore de copies à analyser.',96,'small')}
+<h2>Statistiques · ${esc(t.class.name)}</h2>
+<div class="card">
+<p style="margin:0 0 4px"><b>${t.copies}</b> copie${t.copies>1?'s':''} corrigée${t.copies>1?'s':''}</p>
+${t.avg!==null?`<p style="margin:0">Moyenne générale : <b>${t.avg} %</b></p>${bar(t.avg,t.avg<50)}`:''}
+${t.flagged?`<p class="hint" style="margin:0">${t.flagged} copie${t.flagged>1?'s':''} avec des signaux à vérifier (collage, sortie de page).</p>`:''}
+</div>
+${t.low.length?`<div class="card"><h3>Élèves à suivre</h3><p class="hint" style="margin:0 0 8px">Moyenne en dessous de 50 %</p>${t.low.map(s=>`<p style="margin:0 0 6px">${esc(s.name)} <span class="bad">${s.avg} %</span> <span class="muted">· ${s.n} travail${s.n>1?'ux':''}</span></p>`).join('')}</div>`:''}
+${t.per.map(q=>`<div class="card">
+<h3>${esc(q.title)}</h3>
+<p style="margin:0 0 4px"><span class="tag">${TYPE[q.mode]||'Quiz'}</span><span class="muted">${q.copies} copie${q.copies>1?'s':''}</span></p>
+${q.avg!==null?`<p style="margin:0">Moyenne : <b>${q.avg} %</b> <span class="muted">· de ${q.min} % à ${q.max} %</span></p>${bar(q.avg,q.avg<50)}`:'<p class="muted" style="margin:0">Pas encore de copie.</p>'}
+${q.hard.length?`<p style="margin:12px 0 4px"><b>Questions les plus ratées</b></p>${q.hard.map(h=>`<div class="ans" style="margin-top:8px;padding-top:8px"><span style="white-space:pre-wrap">${esc(h.q)}</span><span class="muted" style="display:block">${h.wrong} erreur${h.wrong>1?'s':''} sur ${h.seen} · <b class="bad">${h.pct} %</b></span></div>`).join('')}`:''}
+</div>`).join('')}
+${t.per.length?'':'<p class="muted">Aucun quiz dans cette classe pour le moment.</p>'}`}
 
 /* ---------- Professeur : éditeur ---------- */
 function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
@@ -442,7 +484,7 @@ ${lib?'':`<label for="f7">Questions tirées au hasard par élève (0 = toutes)</
 <p class="hint">Astuce : écris 20 questions et fais-en tirer 10. Chaque élève reçoit un quiz différent, dans un ordre différent.</p>`}
 <label id="bl">Libellé du devoir ${lib?'':'(facultatif)'}</label>
 <div class="tb" role="toolbar" aria-label="Mise en forme">
-${COLORS.map(c=>`<button class="sw" style="background:${c[1]}" aria-label="Écrire en ${c[0]}" onpointerdown="event.preventDefault()" onclick="fmt('foreColor','${c[1]}')"></button>`).join('')}
+${COLORS.map(c=>`<button class="sw${c[1]==='#ffffff'?' white':''}" style="background:${c[1]}" aria-label="Écrire en ${c[0]}" onpointerdown="event.preventDefault()" onclick="fmt('foreColor','${c[1]}')"></button>`).join('')}
 <button class="tbtn" aria-label="Gras" onpointerdown="event.preventDefault()" onclick="fmt('bold')"><b>G</b></button>
 <button class="tbtn" aria-label="Italique" onpointerdown="event.preventDefault()" onclick="fmt('italic')"><i>I</i></button>
 <button class="tbtn" aria-label="Souligné" onpointerdown="event.preventDefault()" onclick="fmt('underline')"><u>S</u></button>
@@ -452,7 +494,7 @@ ${COLORS.map(c=>`<button class="sw" style="background:${c[1]}" aria-label="Écri
 <button class="tbtn" aria-label="Effacer la mise en forme" onpointerdown="event.preventDefault()" onclick="fmt('removeFormat')">Effacer</button>
 </div>
 <div id="brief" class="paper editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="bl" oninput="S.d.brief=this.innerHTML" onpaste="pastePlain(event)"></div>
-<p class="hint">Fond blanc pour l'élève, quoi qu'il arrive. Il pourra copier ce texte.</p>
+<p class="hint">Sélectionne des mots (appui long), puis touche une couleur. La page de l'élève reste blanche : le texte blanc y est invisible (ici, il apparaît grisé pour que tu le retrouves). L'élève pourra copier ce texte.</p>
 ${lib?'':`<h3 style="margin-top:24px">Questions</h3>
 ${d.qs.map(qCard).join('')}
 <p class="hint">Ajouter une question :</p>
