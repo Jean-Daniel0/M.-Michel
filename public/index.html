@@ -32,6 +32,13 @@ h3{font-size:1.1rem}
 .banner p:last-child{margin-bottom:0}
 .sw.white{box-shadow:inset 0 0 0 1.5px var(--line)}
 .paper.editor span[style*="255, 255, 255"],.paper.editor span[style*="#ffffff"]{background:#d9deea}
+.paper span[style*="#ffffff"]::selection,.paper span[style*="#ffffff"] *::selection{background:#fff;color:#fff;text-shadow:none}
+.paper span[style*="#ffffff"]::-moz-selection,.paper span[style*="#ffffff"] *::-moz-selection{background:#fff;color:#fff;text-shadow:none}
+.titlebar{position:sticky;top:0;z-index:20;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.titlebar div{max-width:640px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:10px}
+.titlebar img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;flex:none}
+.titlebar b{font:700 1.2rem Georgia,"Times New Roman",serif;letter-spacing:.01em}
+.titlebar span{margin-left:auto;font-size:.8rem;opacity:.85;text-align:right}
 .contact{margin:34px 0 8px}
 .contact h2{margin:0 0 4px}
 .soc{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
@@ -118,6 +125,7 @@ ul.rules li{margin:.4em 0}
 </head>
 <body>
 <div class="bar"></div>
+<div id="tb" class="titlebar" style="display:none"><div><img src="/avatar.webp" width="36" height="36" alt=""><b>M.Michel</b><span>Devoirs · Quiz · Consignes</span></div></div>
 <header id="hd"><button onclick="goHome()" aria-label="Accueil M.Michel"><img src="/avatar.webp" width="40" height="40" alt=""><span>M.Michel</span></button></header>
 <main id="app"></main>
 <script src="/avatar.js"></script>
@@ -158,6 +166,7 @@ function render(){
   const v={stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
+  document.getElementById('tb').style.display=S.view==='home'?'block':'none';
   document.body.classList.toggle('white',S.view==='brief');
   if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
   window.scrollTo(0,0);
@@ -237,7 +246,16 @@ async function openBrief(i){
 function vBrief(){const b=S.briefDoc;return `
 <button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
 <h2>${esc(b.title)}</h2>
-<div class="paper">${b.brief}</div>`}
+<button class="btn small primary" onclick="copyPaper(this)" aria-live="polite">Copier</button>
+<div class="paper" id="pp">${b.brief}</div>`}
+async function copyPaper(btn){
+  const el=document.getElementById('pp');let done=false;
+  try{await navigator.clipboard.writeText(el.innerText);done=true}catch(e){}
+  if(!done){try{const r=document.createRange();r.selectNodeContents(el);const s=window.getSelection();s.removeAllRanges();s.addRange(r);done=document.execCommand('copy');s.removeAllRanges()}catch(e){}}
+  if(!btn.dataset.orig)btn.dataset.orig=btn.textContent;
+  btn.textContent=done?'Copié ✓':'Copie impossible';
+  setTimeout(()=>{btn.textContent=btn.dataset.orig},2000);
+}
 
 async function openDevoir(i){
   S.dv=S.devoirs[i];S.briefHtml=null;S.err='';
@@ -252,7 +270,7 @@ ${mascot(S.err?'oops':'hello',S.err||'Entre ton nom, lis les règles, puis lance
 <h2>${esc(q.title)}</h2>
 <p><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span></p>
 <p>${q.n} question${q.n>1?'s':''}${q.minutes>0?` · ${q.minutes} minute${q.minutes>1?'s':''} au total`:' · pas de limite de temps'}</p>
-${S.briefHtml?`<div class="paper" style="margin:0 0 16px">${S.briefHtml}</div>`:''}
+${S.briefHtml?`<button class="btn small primary" onclick="copyPaper(this)" aria-live="polite">Copier le libellé</button><div class="paper" id="pp" style="margin:0 0 16px">${S.briefHtml}</div>`:''}
 <label for="nm">Prénom et nom</label>
 <input type="text" id="nm" autocomplete="name" value="${esc(S.name||'')}">
 <div class="card" style="margin-top:18px"><h3>Avant de commencer</h3>
