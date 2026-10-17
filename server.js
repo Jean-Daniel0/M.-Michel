@@ -81,6 +81,33 @@ function limited(req) {
 
 /* ---------- Quiz ---------- */
 const SUBJECTS = ['Informatique', 'Éducation à la citoyenneté', 'Éducation esthétique et artistique', 'Autre'];
+const PALETTE = new Set(['#111111', '#16358c', '#b80f2b', '#15704a', '#c25a00', '#6b2fa0', '#555555']);
+const hex2 = n => Math.max(0, Math.min(255, parseInt(n) || 0)).toString(16).padStart(2, '0');
+function sanitizeBrief(html) {
+  html = String(html || '').slice(0, 40000).replace(/<(script|style)[\s\S]*?<\/\1\s*>/gi, '');
+  const ALLOWED = new Set(['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'h3', 'ul', 'ol', 'li', 'span']);
+  const text = t => t.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = /<\s*(\/?)\s*([a-zA-Z0-9]+)([^>]*)>/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(html))) {
+    out += text(html.slice(last, m.index)); last = re.lastIndex;
+    const close = m[1] === '/'; let tag = m[2].toLowerCase(); const attrs = m[3] || '';
+    if (tag === 'div') tag = 'p';
+    if (!ALLOWED.has(tag)) continue;
+    if (close) { if (tag !== 'br') out += '</' + tag + '>'; continue; }
+    if (tag === 'br') { out += '<br>'; continue; }
+    if (tag === 'span') {
+      const c = /color\s*:\s*(#[0-9a-fA-F]{6}|rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\))/i.exec(attrs);
+      let hex = null;
+      if (c) hex = c[1][0] === '#' ? c[1].toLowerCase() : '#' + hex2(c[2]) + hex2(c[3]) + hex2(c[4]);
+      out += hex && PALETTE.has(hex) ? '<span style="color:' + hex + '">' : '<span>';
+      continue;
+    }
+    out += '<' + tag + '>';
+  }
+  return (out + text(html.slice(last))).trim();
+}
+const briefText = h => String(h || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
 function cleanQuiz(d) {
   const qs = (Array.isArray(d.qs) ? d.qs : []).slice(0, 200).map(q => {
     const t = ['qcm', 'vf', 'court', 'long'].includes(q.t) ? q.t : 'qcm';
@@ -90,24 +117,51 @@ function cleanQuiz(d) {
     else if (t === 'court') c.a = str(q.a, 500);
     return c;
   });
+  const mode = ['quiz', 'devoir', 'libelle'].includes(d.mode) ? d.mode : 'quiz';
+  if (mode === 'libelle') qs.length = 0;
   return {
     id: str(d.id, 8).toUpperCase().replace(/[^A-Z0-9]/g, ''),
+    classId: str(d.classId, 8).toUpperCase().replace(/[^A-Z0-9]/g, ''),
+    brief: sanitizeBrief(d.brief),
     title: str(d.title, 120).trim(),
     subject: SUBJECTS.includes(d.subject) ? d.subject : 'Autre',
     level: str(d.level, 60),
-    mode: d.mode === 'devoir' ? 'devoir' : 'quiz',
-    minutes: Math.max(0, Math.min(600, parseInt(d.minutes) || 0)),
+    mode,
+    minutes: mode === 'libelle' ? 0 : Math.max(0, Math.min(600, parseInt(d.minutes) || 0)),
     deadline: /^\d{4}-\d{2}-\d{2}$/.test(d.deadline || '') ? d.deadline : '',
-    draw: Math.max(0, Math.min(qs.length, parseInt(d.draw) || 0)),
+    draw: mode === 'libelle' ? 0 : Math.max(0, Math.min(qs.length, parseInt(d.draw) || 0)),
     qs,
     created: d.created || Date.now(),
   };
 }
-const publicInfo = q => ({
-  title: q.title, subject: q.subject, level: q.level, mode: q.mode, minutes: q.minutes, deadline: q.deadline,
-  n: q.draw > 0 ? Math.min(q.draw, q.qs.length) : q.qs.length,
-});
 const deadlinePassed = q => q.deadline && new Date(q.deadline + 'T23:59:59') < new Date();
+const publicInfo = q => ({
+  id: q.id, title: q.title, subject: q.subject, level: q.level, mode: q.mode, minutes: q.minutes, deadline: q.deadline,
+  n: q.draw > 0 ? Math.min(q.draw, q.qs.length) : q.qs.length,
+  hasBrief: !!briefText(q.brief), hasQs: q.qs.length > 0, closed: !!deadlinePassed(q),
+});
+async function newCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let t = 0; t < 30; t++) {
+    const id = Array.from({ length: 5 }, () => A[crypto.randomInt(A.length)]).join('');
+    if (!(await kv.get('quiz:' + id)) && !(await kv.get('class:' + id)) && !safeEq(id, TEACHER_CODE)) return id;
+  }
+  return null;
+}
+async function classQuizzes(classId) {
+  const keys = await kv.list('quiz:');
+  const qs = (await Promise.all(keys.map(k => kv.get(k)))).filter(q => q && q.classId === classId);
+  qs.sort((a, b) => (b.created || 0) - (a.created || 0));
+  return qs;
+}
+async function adoptOrphans() {
+  const keys = await kv.list('quiz:');
+  const orphans = (await Promise.all(keys.map(k => kv.get(k)))).filter(q => q && !q.classId);
+  if (!orphans.length) return;
+  const id = await newCode(); if (!id) return;
+  await kv.set('class:' + id, { id, name: 'Ma classe', level: '', created: Date.now() });
+  for (const q of orphans) { q.classId = id; await kv.set('quiz:' + q.id, q); }
+}
 
 /* ---------- Tentative d'un élève ---------- */
 const attKey = (id, key) => 'att:' + id + ':' + key;
@@ -163,25 +217,35 @@ app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Re
 const wrap = fn => (req, res) => fn(req, res).catch(e => { console.error(e); res.status(500).json({ error: 'Erreur du serveur. Réessaie.' }); });
 const fail = (res, code, msg) => res.status(code).json({ error: msg });
 
-/* Connexion unique : le code du professeur ouvre l'espace prof, un code de quiz ouvre le quiz */
+/* Connexion unique : le code du professeur ouvre l'espace prof, un code de classe ouvre la liste de ses travaux */
 app.post('/api/login', wrap(async (req, res) => {
   if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const code = str(req.body.code, 100).trim();
   if (!code) return fail(res, 400, 'Entre ton code.');
   if (safeEq(code, TEACHER_CODE)) return res.json({ role: 'teacher', token: sign({ r: 't', exp: Date.now() + 30 * 864e5 }) });
-  const quiz = await kv.get('quiz:' + code.toUpperCase());
-  if (!quiz) return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.');
-  if (deadlinePassed(quiz)) return fail(res, 403, 'La date limite de ce travail est passée.');
-  res.json({ role: 'quiz', quiz: publicInfo(quiz) });
+  const cls = await kv.get('class:' + code.toUpperCase());
+  if (!cls) return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.');
+  const qs = await classQuizzes(cls.id);
+  res.json({ role: 'class', class: { name: cls.name, level: cls.level || '' }, devoirs: qs.map(publicInfo) });
+}));
+
+/* Libellé d'un devoir (page blanche côté élève) : il faut connaître le code de la classe */
+app.post('/api/brief', wrap(async (req, res) => {
+  if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  const classId = str(req.body.code, 8).toUpperCase(), qid = str(req.body.qid, 8).toUpperCase();
+  const quiz = await kv.get('quiz:' + qid);
+  if (!quiz || quiz.classId !== classId || !briefText(quiz.brief)) return fail(res, 404, 'Libellé introuvable.');
+  res.json({ title: quiz.title, brief: quiz.brief });
 }));
 
 app.post('/api/start', wrap(async (req, res) => {
   if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
-  const id = str(req.body.code, 8).toUpperCase(), name = str(req.body.name, 80).trim().replace(/\s+/g, ' ');
+  const id = str(req.body.qid, 8).toUpperCase(), classId = str(req.body.code, 8).toUpperCase(), name = str(req.body.name, 80).trim().replace(/\s+/g, ' ');
   const key = nameKey(name);
   if (key.length < 3) return fail(res, 400, 'Entre ton prénom et ton nom.');
   const quiz = await kv.get('quiz:' + id);
-  if (!quiz) return fail(res, 404, 'Code introuvable.');
+  if (!quiz || quiz.classId !== classId) return fail(res, 404, 'Travail introuvable.');
+  if (!quiz.qs.length) return fail(res, 400, 'Ce travail n\'a pas de quiz à passer.');
   let att = await kv.get(attKey(id, key));
   if (att) {
     if (att.finished) return fail(res, 409, 'Tu as déjà rendu ce travail. Demande à ton professeur si tu dois le refaire.');
@@ -206,7 +270,7 @@ app.post('/api/start', wrap(async (req, res) => {
 }));
 
 async function loadAtt(req, res) {
-  const id = str(req.body.code, 8).toUpperCase(), key = nameKey(str(req.body.name, 80));
+  const id = str(req.body.qid, 8).toUpperCase(), key = nameKey(str(req.body.name, 80));
   const [quiz, att] = await Promise.all([kv.get('quiz:' + id), kv.get(attKey(id, key))]);
   if (!quiz || !att) { fail(res, 404, 'Travail introuvable.'); return null; }
   if (!req.body.token || !safeEq(String(req.body.token), att.token)) { fail(res, 403, 'Accès refusé.'); return null; }
@@ -258,13 +322,48 @@ function auth(req, res, next) {
   if (!p || p.r !== 't') return fail(res, 401, 'Session expirée.');
   next();
 }
-app.get('/api/quizzes', auth, wrap(async (req, res) => {
-  const keys = await kv.list('quiz:');
-  const qs = (await Promise.all(keys.map(k => kv.get(k)))).filter(Boolean);
+app.get('/api/classes', auth, wrap(async (req, res) => {
+  await adoptOrphans();
+  const keys = await kv.list('class:');
+  const cls = (await Promise.all(keys.map(k => kv.get(k)))).filter(Boolean);
+  const counts = await Promise.all(cls.map(async c => (await classQuizzes(c.id)).length));
+  cls.forEach((c, i) => { c.n = counts[i]; });
+  cls.sort((a, b) => (a.created || 0) - (b.created || 0));
+  res.json({ classes: cls });
+}));
+app.get('/api/classes/:id', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const qs = await classQuizzes(c.id);
   const counts = await Promise.all(qs.map(async q => (await kv.list('att:' + q.id + ':')).length));
-  qs.forEach((q, i) => { q.n = counts[i]; });
-  qs.sort((a, b) => (b.created || 0) - (a.created || 0));
-  res.json({ quizzes: qs });
+  qs.forEach((q, i) => { q.n = counts[i]; delete q.brief; });
+  res.json({ class: c, quizzes: qs });
+}));
+app.post('/api/classes', auth, wrap(async (req, res) => {
+  const name = str(req.body.name, 80).trim(), level = str(req.body.level, 60).trim();
+  if (!name) return fail(res, 400, 'Donne un nom à la classe.');
+  let id = str(req.body.id, 8).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  let c;
+  if (id) {
+    c = await kv.get('class:' + id);
+    if (!c) return fail(res, 404, 'Classe introuvable.');
+    c.name = name; c.level = level;
+  } else {
+    id = await newCode();
+    if (!id) return fail(res, 500, 'Impossible de créer un code. Réessaie.');
+    c = { id, name, level, created: Date.now() };
+  }
+  await kv.set('class:' + id, c);
+  res.json({ class: c });
+}));
+app.delete('/api/classes/:id', auth, wrap(async (req, res) => {
+  const id = req.params.id.toUpperCase();
+  for (const q of await classQuizzes(id)) {
+    await Promise.all((await kv.list('att:' + q.id + ':')).map(k => kv.del(k)));
+    await kv.del('quiz:' + q.id);
+  }
+  await kv.del('class:' + id);
+  res.json({ ok: true });
 }));
 app.get('/api/quizzes/:id', auth, wrap(async (req, res) => {
   const q = await kv.get('quiz:' + req.params.id.toUpperCase());
@@ -273,8 +372,10 @@ app.get('/api/quizzes/:id', auth, wrap(async (req, res) => {
 }));
 app.post('/api/quizzes', auth, wrap(async (req, res) => {
   const d = cleanQuiz(req.body || {});
-  if (!d.title) return fail(res, 400, 'Donne un titre au quiz.');
-  if (!d.qs.length) return fail(res, 400, 'Ajoute au moins une question.');
+  if (!d.title) return fail(res, 400, 'Donne un titre.');
+  if (!d.classId || !(await kv.get('class:' + d.classId))) return fail(res, 400, 'Choisis une classe.');
+  if (d.mode === 'libelle') { if (!briefText(d.brief)) return fail(res, 400, 'Écris le libellé du devoir.'); }
+  else if (!d.qs.length) return fail(res, 400, 'Ajoute au moins une question.');
   for (let i = 0; i < d.qs.length; i++) {
     const q = d.qs[i], n = i + 1;
     if (!q.q.trim()) return fail(res, 400, `La question ${n} est vide.`);
@@ -285,11 +386,7 @@ app.post('/api/quizzes', auth, wrap(async (req, res) => {
     if (q.t === 'court' && !q.a.trim()) return fail(res, 400, `Indique la réponse attendue pour la question ${n}.`);
   }
   if (!d.id) {
-    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    for (let t = 0; t < 20 && !d.id; t++) {
-      const id = Array.from({ length: 5 }, () => A[crypto.randomInt(A.length)]).join('');
-      if (!(await kv.get('quiz:' + id)) && !safeEq(id, TEACHER_CODE)) d.id = id;
-    }
+    d.id = await newCode();
     if (!d.id) return fail(res, 500, 'Impossible de créer un code. Réessaie.');
   } else {
     const old = await kv.get('quiz:' + d.id);

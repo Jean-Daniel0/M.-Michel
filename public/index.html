@@ -22,6 +22,24 @@ h1{font-size:2.4rem}
 h2{font-size:1.45rem}
 h3{font-size:1.1rem}
 .lead{color:var(--mute);margin:0 0 1.4em;max-width:36ch}
+.portrait{position:relative;margin:6px 0 28px;max-width:340px}
+.portrait img{display:block;width:100%;aspect-ratio:4/5;object-fit:cover;object-position:50% 12%;border-radius:20px;box-shadow:9px 9px 0 var(--blue)}
+.portrait figcaption{position:absolute;left:-6px;bottom:20px;max-width:88%;background:var(--card);color:var(--ink);padding:10px 16px;border-radius:0 12px 12px 0;border-left:5px solid var(--red);box-shadow:0 8px 20px rgba(0,0,0,.28)}
+.portrait figcaption b{display:block;font:700 1.15rem/1.2 Georgia,"Times New Roman",serif}
+.portrait figcaption span{font-size:.85rem;color:var(--mute)}
+.about{margin:0 0 1.2em;max-width:46ch}
+.paper{background:#fff;color:#111;border-radius:12px;padding:16px;line-height:1.6;-webkit-user-select:text;user-select:text;color-scheme:only light;overflow-wrap:anywhere}
+.paper p{margin:0 0 .7em}
+.paper h3{color:#111;margin:.8em 0 .3em}
+.paper ul,.paper ol{padding-left:1.3em;margin:0 0 .7em}
+.paper.editor{min-height:200px;caret-color:#111;outline:none}
+.paper.editor:focus{box-shadow:0 0 0 3px var(--blue)}
+.tb{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px}
+.sw{width:34px;height:34px;border-radius:50%;border:0;padding:0;cursor:pointer}
+.tbtn{min-width:40px;min-height:36px;padding:4px 10px;border:0;border-radius:8px;background:var(--soft);color:var(--blue);font:inherit;font-weight:700;cursor:pointer}
+body.white{--bg:#fff;--card:#fff;--ink:#111;--mute:#444;--line:#ddd;--blue:#16358c;--on-blue:#fff;--soft:#e7ecfa;--red:#b80f2b;background:#fff;color:#111;color-scheme:only light}
+body.white .paper{padding:4px 0;border-radius:0}
+.big{font-size:2rem}
 .hero{display:block;width:100%;max-width:250px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:8px 0 22px 0;box-shadow:7px 7px 0 var(--blue)}
 .hint{color:var(--mute);font-size:.9rem;margin:.4em 0 0}
 .btn{display:block;width:100%;min-height:50px;padding:12px 16px;margin:0 0 10px;border:1.5px solid var(--blue);border-radius:10px;background:transparent;color:var(--blue);font:inherit;font-weight:600;text-align:center;cursor:pointer}
@@ -87,15 +105,17 @@ ul.rules li{margin:.4em 0}
 <script>
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
+const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me'];
 async function api(path,method,body,keepalive){
   const h={'Content-Type':'application/json'};
-  const tk=store.get('mm_token');if(tk&&path.indexOf('/api/quizzes')===0||tk&&path.indexOf('/api/results')===0||tk&&path==='/api/me')h.Authorization='Bearer '+tk;
+  const tk=store.get('mm_token');
+  if(tk&&AUTH.some(p=>path.indexOf(p)===0))h.Authorization='Bearer '+tk;
   let r;
   try{r=await fetch(path,{method:method||'GET',headers:h,body:body?JSON.stringify(body):undefined,keepalive:!!keepalive})}
   catch(e){throw{message:'Pas de connexion. Vérifie ton réseau et réessaie.',status:0}}
   let j={};try{j=await r.json()}catch(e){}
   if(!r.ok){
-    if(r.status===401&&path.indexOf('/api/')===0&&h.Authorization){store.del('mm_token');S.teacher=false;S.view='home';render()}
+    if(r.status===401&&h.Authorization){store.del('mm_token');S.token=false;S.view='home';render()}
     throw{message:j.error||'Une erreur est survenue.',status:r.status};
   }
   return j;
@@ -105,7 +125,10 @@ async function api(path,method,body,keepalive){
 const app=()=>document.getElementById('app');
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmtT=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const fmtDate=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[3]+'/'+m[2]+'/'+m[1]:''};
 const SUBJECTS=['Informatique','Éducation à la citoyenneté','Éducation esthétique et artistique','Autre'];
+const TYPE={quiz:'Quiz',devoir:'Devoir',libelle:'Consigne'};
+const COLORS=[['Noir','#111111'],['Bleu','#16358c'],['Rouge','#b80f2b'],['Vert','#15704a'],['Orange','#c25a00'],['Violet','#6b2fa0'],['Gris','#555555']];
 let S={view:'home',err:'',busy:false};
 let timerId=null;
 const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.','Réfléchis avec tes propres mots.','Tu y es presque, courage !'];
@@ -113,9 +136,11 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
 function render(){
-  const v={home:vHome,intro:vIntro,take:vTake,done:vDone,thome:vTHome,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  const v={home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
+  document.body.classList.toggle('white',S.view==='brief');
+  if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
   window.scrollTo(0,0);
   if(S.view==='take')tick();
 }
@@ -123,9 +148,15 @@ function setErr(m){S.err=m;S.busy=false;render()}
 
 /* ---------- Accueil : un seul code pour tout le monde ---------- */
 function vHome(){return `
-${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commencer.',150)}
+<figure class="portrait">
+<img src="/michel.webp" width="640" height="640" alt="Jean-Daniel MICHEL, professeur">
+<figcaption><b>Jean-Daniel MICHEL</b><span>Professeur</span></figcaption>
+</figure>
 <h1>M.Michel</h1>
-<p class="lead">Quiz et devoirs.</p>
+<p class="about">Bienvenue sur la plateforme de Jean-Daniel MICHEL, professeur d'informatique, d'éducation à la citoyenneté et d'éducation esthétique et artistique.</p>
+<p class="about">Ici, chaque classe retrouve ses devoirs, ses quiz et ses consignes au même endroit, avec un code qui lui est propre. Apprendre, c'est d'abord comprendre : prends le temps de lire, de chercher et de répondre avec tes propres mots, car c'est ainsi que l'on progresse vraiment.</p>
+<p class="about">Entre ton code ci-dessous pour retrouver tes travaux.</p>
+${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commencer.',150)}
 <label for="code">Ton code</label>
 <input type="text" id="code" autocomplete="off" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')homeGo()">
 <p></p>
@@ -140,19 +171,50 @@ async function homeGo(){
     const r=await api('/api/login','POST',{code});
     S.busy=false;
     if(r.role==='teacher'){store.set('mm_token',r.token);S.token=true;return enterTeacher()}
-    S.quiz=r.quiz;S.code=code.toUpperCase();go('intro');
+    S.code=code.toUpperCase();S.cls=r.class;S.devoirs=r.devoirs;go('devoirs');
   }catch(e){setErr(e.message)}
 }
 function backToTeacher(){enterTeacher()}
-function enterTeacher(){S.view='thome';S.quizzes=null;render();loadTHome()}
+function enterTeacher(){S.view='thome';S.classes=null;render();loadClasses()}
+
+/* ---------- Élève : travaux de la classe ---------- */
+function vDevoirs(){
+  const L=S.devoirs;
+  return `<button class="back" onclick="go('home')">‹ Changer de code</button>
+${mascot(S.err?'oops':'hello',S.err||'Voici les travaux de ta classe.',96,'small')}
+<h2>${esc(S.cls.name)}</h2>
+${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
+${L.length?L.map((d,i)=>`<div class="card">
+<h3>${esc(d.title)}</h3>
+<p style="margin:0 0 10px"><span class="tag">${esc(d.subject)}</span><span class="tag">${TYPE[d.mode]||'Quiz'}</span>${d.deadline?`<span class="tag ${d.closed?'warn':''}">${d.closed?'Terminé':'Avant le '+fmtDate(d.deadline)}</span>`:''}${d.minutes>0?`<span class="tag">${d.minutes} min</span>`:''}</p>
+${d.hasBrief?`<button class="btn small" onclick="openBrief(${i})">Lire le libellé</button>`:''}
+${d.hasQs&&!d.closed?`<button class="btn small primary" onclick="openDevoir(${i})">Commencer</button>`:''}
+</div>`).join(''):'<p class="muted">Aucun travail pour le moment. Reviens plus tard.</p>'}`}
+
+async function openBrief(i){
+  S.dv=S.devoirs[i];
+  try{const r=await api('/api/brief','POST',{code:S.code,qid:S.dv.id});S.briefDoc=r;go('brief')}
+  catch(e){setErr(e.message)}
+}
+function vBrief(){const b=S.briefDoc;return `
+<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
+<h2>${esc(b.title)}</h2>
+<div class="paper">${b.brief}</div>`}
+
+async function openDevoir(i){
+  S.dv=S.devoirs[i];S.briefHtml=null;S.err='';
+  if(S.dv.hasBrief){try{const r=await api('/api/brief','POST',{code:S.code,qid:S.dv.id});S.briefHtml=r.brief}catch(e){}}
+  go('intro');
+}
 
 /* ---------- Élève : nom, règles, début ---------- */
-function vIntro(){const q=S.quiz;return `
-<button class="back" onclick="go('home')">‹ Changer de code</button>
+function vIntro(){const q=S.dv;return `
+<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
 ${mascot(S.err?'oops':'hello',S.err||'Entre ton nom, lis les règles, puis lance-toi !',96,'small')}
 <h2>${esc(q.title)}</h2>
-<p><span class="tag">${esc(q.subject)}</span><span class="tag">${q.mode==='devoir'?'Devoir':'Quiz'}</span>${q.level?`<span class="tag">${esc(q.level)}</span>`:''}</p>
+<p><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span></p>
 <p>${q.n} question${q.n>1?'s':''}${q.minutes>0?` · ${q.minutes} minute${q.minutes>1?'s':''} au total`:' · pas de limite de temps'}</p>
+${S.briefHtml?`<div class="paper" style="margin:0 0 16px">${S.briefHtml}</div>`:''}
 <label for="nm">Prénom et nom</label>
 <input type="text" id="nm" autocomplete="name" value="${esc(S.name||'')}">
 <div class="card" style="margin-top:18px"><h3>Avant de commencer</h3>
@@ -169,9 +231,9 @@ async function startRun(){
   S.name=name;
   if(name.length<3){S.err='Entre ton prénom et ton nom.';return render()}
   document.getElementById('sb').disabled=true;
-  const lk='mm_att:'+S.code+':'+name.toLowerCase();
+  const lk='mm_att:'+S.dv.id+':'+name.toLowerCase();
   try{
-    const r=await api('/api/start','POST',{code:S.code,name,token:store.get(lk)});
+    const r=await api('/api/start','POST',{code:S.code,qid:S.dv.id,name,token:store.get(lk)});
     if(r.done)return showDone(r);
     store.set(lk,r.token);S.token_att=r.token;
     beginRun(r.state);
@@ -194,7 +256,7 @@ function tick(){
   if(left<60000&&left>0&&!r.warned){r.warned=true;setMood('wow',"Plus qu'une minute !")}
   if(left<=0&&!r.finishing)timeUp();
 }
-function body(extra){return Object.assign({code:S.code,name:S.name,token:S.token_att,flags:S.run?S.run.flags:undefined},extra||{})}
+function body(extra){return Object.assign({code:S.code,qid:S.dv&&S.dv.id,name:S.name,token:S.token_att,flags:S.run?S.run.flags:undefined},extra||{})}
 function sendFlags(){if(S.run&&S.view==='take')api('/api/flags','POST',body(),true).catch(()=>{})}
 document.addEventListener('visibilitychange',()=>{
   const r=S.run;if(!r||S.view!=='take')return;
@@ -268,6 +330,10 @@ function showDone(res){
   clearInterval(timerId);window.onbeforeunload=null;window.onpopstate=null;
   S.run=null;S.result=res;S.view='done';render();
 }
+async function backToList(){
+  try{const r=await api('/api/login','POST',{code:S.code});S.devoirs=r.devoirs;S.cls=r.class}catch(e){}
+  go('devoirs');
+}
 function vDone(){
   const res=S.result,sc=res.summary||{s:0,t:0,p:0};
   const auto=sc.t-sc.p,ratio=auto>0?sc.s/auto:1;
@@ -279,6 +345,7 @@ ${res.timeUp?'<p class="err">Le temps était écoulé : les réponses non donné
 <div class="card"><p style="margin:0">Score automatique : <b>${sc.s} / ${sc.t}</b></p>
 ${sc.p?`<p class="hint">${sc.p} question${sc.p>1?'s':''} rédigée${sc.p>1?'s':''} à corriger par ton professeur.</p>`:''}</div>
 <p class="muted">Tu peux fermer cette page.</p>
+<button class="btn" onclick="backToList()">Retour aux travaux de ma classe</button>
 <button class="btn" onclick="S.name='';go('home')">Retour à l'accueil</button>`}
 
 function score(res){
@@ -287,60 +354,124 @@ function score(res){
   return{s,p,t:res.total||res.answers.length};
 }
 
-/* ---------- Professeur : accueil ---------- */
-async function loadTHome(){
-  try{const r=await api('/api/quizzes');S.quizzes=r.quizzes}catch(e){S.quizzes=[];S.err=e.message}
+/* ---------- Professeur : mes classes ---------- */
+async function loadClasses(){
+  try{const r=await api('/api/classes');S.classes=r.classes}catch(e){S.classes=[];S.err=e.message}
   if(S.view==='thome')render();
 }
 function vTHome(){
-  const L=S.quizzes;
+  const L=S.classes;
   if(!L)return '<p class="muted">Chargement…</p>';
-  return `${mascot('hello',L.length?'Bonjour M.Michel ! Voici tes quiz et devoirs.':'Bonjour M.Michel ! Crée ton premier quiz.',110)}
-<h2>Mes quiz et devoirs</h2>
+  return `${mascot('hello',L.length?'Bonjour M.Michel ! Voici tes classes.':'Bonjour M.Michel ! Crée ta première classe.',110)}
+<h2>Mes classes</h2>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
-<button class="btn primary" onclick="newQuiz()">Créer un quiz ou un devoir</button>
-${L.length?L.map(q=>`<div class="card">
-<h3>${esc(q.title)}</h3>
-<p style="margin:0 0 8px"><span class="tag">${esc(q.subject)}</span><span class="tag">${q.mode==='devoir'?'Devoir':'Quiz'}</span>${q.level?`<span class="tag">${esc(q.level)}</span>`:''}</p>
-<p style="margin:0 0 10px">Code élève : <span class="code">${esc(q.id)}</span></p>
-<p class="hint" style="margin:0 0 12px">${q.qs.length} question${q.qs.length>1?'s':''} · ${q.n} copie${q.n>1?'s':''}</p>
-<button class="btn small primary" onclick="openRes('${esc(q.id)}')">Résultats</button>
-<button class="btn small" onclick="editQuiz('${esc(q.id)}')">Modifier</button>
-<button class="btn small danger" onclick="delQuiz('${esc(q.id)}')">Supprimer</button>
-</div>`).join(''):'<p class="muted">Donne ensuite son code à tes élèves.</p>'}
+<button class="btn primary" onclick="newClass()">Créer une classe</button>
+${L.map(c=>`<div class="card">
+<h3>${esc(c.name)}</h3>
+${c.level?`<p class="muted" style="margin:0 0 8px">${esc(c.level)}</p>`:''}
+<p style="margin:0 0 10px">Code de la classe : <span class="code">${esc(c.id)}</span></p>
+<p class="hint" style="margin:0 0 12px">${c.n} travail${c.n>1?'ux':''}</p>
+<button class="btn small primary" onclick="openClass('${esc(c.id)}')">Ouvrir</button>
+<button class="btn small" onclick="editClass('${esc(c.id)}')">Renommer</button>
+<button class="btn small danger" onclick="delClass('${esc(c.id)}')">Supprimer</button>
+</div>`).join('')}
 <p></p>
 <button class="btn" onclick="S.name='';S.view='home';render()">Voir la page des élèves</button>
 <button class="btn" onclick="logout()">Me déconnecter de cet appareil</button>`}
 function logout(){store.del('mm_token');S.token=false;go('home')}
+function newClass(){S.cd={id:'',name:'',level:''};S.err='';S.view='cedit';render()}
+function editClass(id){const c=S.classes.find(x=>x.id===id);S.cd={id:c.id,name:c.name,level:c.level||''};S.err='';S.view='cedit';render()}
+function vCEdit(){const c=S.cd;return `<button class="back" onclick="enterTeacher()">‹ Annuler</button>
+<h2>${c.id?'Renommer la classe':'Nouvelle classe'}</h2>
+<label for="cn">Nom de la classe</label><input type="text" id="cn" placeholder="ex : 8e AF A, NS2, 9e B" value="${esc(c.name)}" oninput="S.cd.name=this.value">
+<label for="cl">Niveau (facultatif)</label><input type="text" id="cl" placeholder="ex : Fondamental 3e cycle" value="${esc(c.level)}" oninput="S.cd.level=this.value">
+<p class="hint">Un code unique est créé pour la classe. Tes élèves l'entrent sur la page d'accueil pour voir leurs travaux.</p>
+${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
+<p></p><button class="btn primary" onclick="saveClass()">Enregistrer</button>`}
+async function saveClass(){
+  try{await api('/api/classes','POST',S.cd);enterTeacher()}catch(e){S.err=e.message;render()}
+}
+async function delClass(id){
+  if(!confirm('Supprimer cette classe, tous ses travaux et toutes les copies ?'))return;
+  try{await api('/api/classes/'+id,'DELETE');loadClasses()}catch(e){S.err=e.message;render()}
+}
+
+/* ---------- Professeur : une classe et ses travaux ---------- */
+async function openClass(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{const r=await api('/api/classes/'+id);S.tc=r;S.err='';S.view='tclass';render()}
+  catch(e){S.err=e.message;S.view='thome';render()}
+}
+function vTClass(){
+  const c=S.tc.class,L=S.tc.quizzes;
+  return `<button class="back" onclick="enterTeacher()">‹ Mes classes</button>
+<h2>${esc(c.name)}</h2>
+<p style="margin:0 0 4px">Code de la classe : <span class="code">${esc(c.id)}</span></p>
+<p class="hint" style="margin:0 0 16px">Donne ce code à tes élèves : il ouvre la liste de leurs travaux.</p>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
+${L.length?L.map(q=>`<div class="card">
+<h3>${esc(q.title)}</h3>
+<p style="margin:0 0 8px"><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}</p>
+<p class="hint" style="margin:0 0 12px">${q.qs.length} question${q.qs.length>1?'s':''} · ${q.n} copie${q.n>1?'s':''}</p>
+${q.qs.length?`<button class="btn small primary" onclick="openRes('${esc(q.id)}')">Résultats</button>`:''}
+<button class="btn small" onclick="editQuiz('${esc(q.id)}')">Modifier</button>
+<button class="btn small danger" onclick="delQuiz('${esc(q.id)}')">Supprimer</button>
+</div>`).join(''):'<p class="muted">Aucun travail dans cette classe pour le moment.</p>'}`}
 async function delQuiz(id){
-  if(!confirm('Supprimer ce quiz et toutes ses copies ?'))return;
-  try{await api('/api/quizzes/'+id,'DELETE');loadTHome()}catch(e){S.err=e.message;render()}
+  if(!confirm('Supprimer ce travail et toutes ses copies ?'))return;
+  try{await api('/api/quizzes/'+id,'DELETE');openClass(S.tc.class.id)}catch(e){S.err=e.message;render()}
 }
 
 /* ---------- Professeur : éditeur ---------- */
 function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
-function newQuiz(){S.d={id:'',title:'',subject:SUBJECTS[0],level:'',mode:'quiz',minutes:15,deadline:'',draw:0,qs:[blankQ('qcm')]};S.err='';S.view='editor';render()}
+function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',qs:[blankQ('qcm')]};S.err='';S.view='editor';render()}
 async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
+function setMode(m){S.d.mode=m;if(m!=='libelle'&&!S.d.qs.length)S.d.qs=[blankQ('qcm')];if(m==='devoir'&&S.d.minutes===15)S.d.minutes=0;render()}
 function vEditor(){
-  const d=S.d;
-  return `<button class="back" onclick="enterTeacher()">‹ Annuler</button>
+  const d=S.d,lib=d.mode==='libelle';
+  return `<button class="back" onclick="openClass('${esc(d.classId)}')">‹ Annuler</button>
 ${mascot('hello','Écris tes questions, je m\'occupe du reste !',84,'small')}
-<h2>${d.id?'Modifier':'Nouveau'} ${d.mode==='devoir'?'devoir':'quiz'}</h2>
+<h2>${d.id?'Modifier':'Nouveau'} ${lib?'libellé':d.mode==='devoir'?'devoir':'quiz'}</h2>
 <label for="f1">Titre</label><input type="text" id="f1" value="${esc(d.title)}" oninput="S.d.title=this.value">
+<label for="f4">Type</label><select id="f4" onchange="setMode(this.value)"><option value="quiz" ${d.mode==='quiz'?'selected':''}>Quiz (en classe, chronométré)</option><option value="devoir" ${d.mode==='devoir'?'selected':''}>Devoir (à la maison)</option><option value="libelle" ${lib?'selected':''}>Libellé seul (consigne sans quiz)</option></select>
 <label for="f2">Matière</label><select id="f2" onchange="S.d.subject=this.value">${SUBJECTS.map(s=>`<option ${s===d.subject?'selected':''}>${esc(s)}</option>`).join('')}</select>
-<label for="f3">Classe ou niveau (facultatif)</label><input type="text" id="f3" placeholder="ex : 8e année fondamentale, NS2" value="${esc(d.level)}" oninput="S.d.level=this.value">
-<label for="f4">Type</label><select id="f4" onchange="S.d.mode=this.value;render()"><option value="quiz" ${d.mode==='quiz'?'selected':''}>Quiz (en classe, chronométré)</option><option value="devoir" ${d.mode==='devoir'?'selected':''}>Devoir (à la maison)</option></select>
-<label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">
+${lib?'':`<label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">`}
 <label for="f6">Date limite (facultatif)</label><input type="date" id="f6" value="${esc(d.deadline)}" oninput="S.d.deadline=this.value">
-<label for="f7">Questions tirées au hasard par élève (0 = toutes)</label><input type="number" id="f7" min="0" value="${d.draw}" oninput="S.d.draw=Math.max(0,+this.value||0)">
-<p class="hint">Astuce : écris 20 questions et fais-en tirer 10. Chaque élève reçoit un quiz différent, dans un ordre différent.</p>
-<h3 style="margin-top:24px">Questions</h3>
+${lib?'':`<label for="f7">Questions tirées au hasard par élève (0 = toutes)</label><input type="number" id="f7" min="0" value="${d.draw}" oninput="S.d.draw=Math.max(0,+this.value||0)">
+<p class="hint">Astuce : écris 20 questions et fais-en tirer 10. Chaque élève reçoit un quiz différent, dans un ordre différent.</p>`}
+<label id="bl">Libellé du devoir ${lib?'':'(facultatif)'}</label>
+<div class="tb" role="toolbar" aria-label="Mise en forme">
+${COLORS.map(c=>`<button class="sw" style="background:${c[1]}" aria-label="Écrire en ${c[0]}" onpointerdown="event.preventDefault()" onclick="fmt('foreColor','${c[1]}')"></button>`).join('')}
+<button class="tbtn" aria-label="Gras" onpointerdown="event.preventDefault()" onclick="fmt('bold')"><b>G</b></button>
+<button class="tbtn" aria-label="Italique" onpointerdown="event.preventDefault()" onclick="fmt('italic')"><i>I</i></button>
+<button class="tbtn" aria-label="Souligné" onpointerdown="event.preventDefault()" onclick="fmt('underline')"><u>S</u></button>
+<button class="tbtn" aria-label="Titre" onpointerdown="event.preventDefault()" onclick="fmt('formatBlock','h3')">Titre</button>
+<button class="tbtn" aria-label="Texte normal" onpointerdown="event.preventDefault()" onclick="fmt('formatBlock','p')">Texte</button>
+<button class="tbtn" aria-label="Liste à puces" onpointerdown="event.preventDefault()" onclick="fmt('insertUnorderedList')">• Liste</button>
+<button class="tbtn" aria-label="Effacer la mise en forme" onpointerdown="event.preventDefault()" onclick="fmt('removeFormat')">Effacer</button>
+</div>
+<div id="brief" class="paper editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="bl" oninput="S.d.brief=this.innerHTML" onpaste="pastePlain(event)"></div>
+<p class="hint">Fond blanc pour l'élève, quoi qu'il arrive. Il pourra copier ce texte.</p>
+${lib?'':`<h3 style="margin-top:24px">Questions</h3>
 ${d.qs.map(qCard).join('')}
 <p class="hint">Ajouter une question :</p>
-<button class="btn small" onclick="addQ('qcm')">Choix multiple</button><button class="btn small" onclick="addQ('vf')">Vrai ou faux</button><button class="btn small" onclick="addQ('court')">Réponse courte</button><button class="btn small" onclick="addQ('long')">Réponse rédigée</button>
+<button class="btn small" onclick="addQ('qcm')">Choix multiple</button><button class="btn small" onclick="addQ('vf')">Vrai ou faux</button><button class="btn small" onclick="addQ('court')">Réponse courte</button><button class="btn small" onclick="addQ('long')">Réponse rédigée</button>`}
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p>
 <button class="btn primary" onclick="saveQuiz()">Enregistrer</button>`}
+function fmt(c,v){
+  const el=document.getElementById('brief');el.focus();
+  try{document.execCommand('defaultParagraphSeparator',false,'p');document.execCommand('styleWithCSS',false,true)}catch(e){}
+  document.execCommand(c,false,v||null);
+  S.d.brief=el.innerHTML;
+}
+function pastePlain(e){
+  e.preventDefault();
+  const t=(e.clipboardData||window.clipboardData).getData('text/plain');
+  document.execCommand('insertText',false,t);
+  S.d.brief=document.getElementById('brief').innerHTML;
+}
 function qCard(q,i){
   let b='';
   if(q.t==='qcm')b=q.opts.map((o,k)=>`<div class="row"><input type="radio" name="c${i}" ${q.a===k?'checked':''} onchange="S.d.qs[${i}].a=${k}" aria-label="Bonne réponse : choix ${k+1}"><input type="text" class="grow" value="${esc(o)}" placeholder="Choix ${k+1}" aria-label="Choix ${k+1}" oninput="S.d.qs[${i}].opts[${k}]=this.value"></div>`).join('')+'<p class="hint">Coche la bonne réponse.</p>';
@@ -359,7 +490,7 @@ function setT(i,t){const old=S.d.qs[i];const n=blankQ(t);n.q=old.q;n.why=t==='lo
 function addQ(t){S.d.qs.push(blankQ(t));render();window.scrollTo(0,document.body.scrollHeight)}
 function delQ(i){if(S.d.qs.length<2)return;S.d.qs.splice(i,1);render()}
 async function saveQuiz(){
-  try{await api('/api/quizzes','POST',S.d);enterTeacher()}
+  try{await api('/api/quizzes','POST',S.d);openClass(S.d.classId)}
   catch(e){S.err=e.message;render();window.scrollTo(0,document.body.scrollHeight)}
 }
 
@@ -367,7 +498,7 @@ async function saveQuiz(){
 async function openRes(id){
   app().innerHTML='<p class="muted">Chargement…</p>';
   try{const r=await api('/api/quizzes/'+id+'/results');S.rq=r.quiz;S.rl=r.results;S.err='';S.view='results';render()}
-  catch(e){S.err=e.message;S.view='thome';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
 }
 function flagTags(f){
   let h='';
@@ -379,9 +510,8 @@ function flagTags(f){
 function vResults(){
   const q=S.rq,L=S.rl,done=L.filter(r=>r.finished);
   const tot=done.reduce((a,r)=>a+score(r).s,0),mx=done.length?score(done[0]).t:0;
-  return `<button class="back" onclick="enterTeacher()">‹ Mes quiz</button>
+  return `<button class="back" onclick="openClass('${esc(q.classId)}')">‹ Retour à la classe</button>
 <h2>${esc(q.title)}</h2>
-<p>Code élève : <span class="code">${esc(q.id)}</span></p>
 <p class="hint">${done.length} copie${done.length>1?'s':''} rendue${done.length>1?'s':''}${done.length?` · moyenne ${(tot/done.length).toFixed(1)} / ${mx}`:''}</p>
 <button class="btn small" onclick="openRes('${esc(q.id)}')">Actualiser</button>
 ${L.length?L.map((r,i)=>{const sc=score(r);return `<div class="card">
