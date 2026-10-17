@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#16358c">
+<title>M.Michel</title>
+<link rel="icon" href="/favicon.png">
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--ink:#12182b;--mute:#586078;--line:#d6dcea;--blue:#16358c;--on-blue:#fff;--red:#b80f2b;--green:#15704a;--amber:#8f5400;--soft:#e7ecfa;--warn:#fff3da;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1322;--card:#171e36;--ink:#eef1fa;--mute:#9ba5c0;--line:#29335a;--blue:#8aa6ff;--on-blue:#0b1230;--red:#ff7088;--green:#52d89a;--amber:#f2b955;--soft:#1e2851;--warn:#3a2f14;color-scheme:dark}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.bar{height:6px;background:linear-gradient(90deg,var(--blue) 0 66%,var(--red) 66% 100%)}
+#hd{max-width:640px;margin:0 auto;padding:12px 16px 0}
+#hd button{display:flex;align-items:center;gap:10px;background:none;border:0;padding:4px 0;color:var(--ink);font:700 1.15rem Georgia,"Times New Roman",serif;cursor:pointer}
+#hd img{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--blue)}
+#app{max-width:640px;margin:0 auto;padding:16px 16px 64px}
+h1,h2,h3{font-family:Georgia,"Times New Roman",serif;line-height:1.2;margin:0 0 .5em}
+h1{font-size:2.4rem}
+h2{font-size:1.45rem}
+h3{font-size:1.1rem}
+.lead{color:var(--mute);margin:0 0 1.4em;max-width:36ch}
+.hero{display:block;width:100%;max-width:250px;aspect-ratio:1/1;object-fit:cover;border-radius:16px;margin:8px 0 22px 0;box-shadow:7px 7px 0 var(--blue)}
+.hint{color:var(--mute);font-size:.9rem;margin:.4em 0 0}
+.btn{display:block;width:100%;min-height:50px;padding:12px 16px;margin:0 0 10px;border:1.5px solid var(--blue);border-radius:10px;background:transparent;color:var(--blue);font:inherit;font-weight:600;text-align:center;cursor:pointer}
+.btn.primary{background:var(--blue);color:var(--on-blue)}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.small{display:inline-block;width:auto;min-height:40px;padding:8px 14px;margin:0 8px 8px 0;font-size:.92rem}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.opt:focus-visible,#hd button:focus-visible,.back:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+label{display:block;font-weight:600;margin:14px 0 4px}
+input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{width:100%;min-height:46px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+textarea{min-height:96px;resize:vertical}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 14px}
+.row{display:flex;gap:10px;align-items:center;margin:6px 0}
+.row .grow{flex:1}
+.row input[type=radio],.row input[type=checkbox]{width:22px;height:22px;flex:none}
+.check{display:flex;gap:10px;align-items:center;font-weight:500;margin:12px 0 0}
+.check input{width:22px;height:22px;flex:none}
+.tag{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.82rem;font-weight:600;background:var(--soft);color:var(--blue);margin:0 6px 6px 0}
+.tag.warn{background:var(--warn);color:var(--amber)}
+.tag.ok{color:var(--green)}
+.code{font:700 1.6rem/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.14em;color:var(--blue)}
+.err{color:var(--red);font-weight:600;margin:12px 0 0}
+.top{display:flex;justify-content:space-between;align-items:center;margin:0 0 18px;color:var(--mute);font-weight:600}
+.timer{font-variant-numeric:tabular-nums;color:var(--ink)}
+.timer.low{color:var(--red)}
+.qtext{font-family:Georgia,serif;font-size:1.3rem;line-height:1.35;margin:0 0 18px;-webkit-user-select:none;user-select:none;white-space:pre-wrap}
+.opt{display:block;width:100%;min-height:52px;margin:0 0 10px;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer;-webkit-user-select:none;user-select:none}
+.opt.sel{border-color:var(--blue);background:var(--soft);font-weight:600}
+.prog{height:6px;background:var(--line);border-radius:9px;overflow:hidden;margin:0 0 20px}
+.prog i{display:block;height:100%;background:var(--blue)}
+ul.rules{padding-left:1.2em;margin:0 0 1.2em}
+ul.rules li{margin:.4em 0}
+.ans{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.ans b{display:block}
+.muted{color:var(--mute)}
+.good{color:var(--green);font-weight:600}
+.bad{color:var(--red);font-weight:600}
+.back{display:inline-block;margin:0 0 14px;color:var(--blue);background:none;border:0;padding:6px 0;font:inherit;font-weight:600;cursor:pointer}
+.mascot{display:flex;gap:10px;align-items:flex-end;margin:0 0 16px}
+.mascot svg{flex:none}
+.bubble{flex:1;min-width:0;background:var(--card);border:1.5px solid var(--line);border-radius:16px 16px 16px 4px;padding:10px 14px;font-weight:600;line-height:1.35;margin-bottom:22px}
+.mascot.small{margin:0 0 14px}
+.mascot.small .bubble{margin-bottom:8px;font-size:.92rem;font-weight:500}
+.av{display:block;overflow:visible}
+@keyframes bob{50%{transform:translateY(-3px)}}
+@keyframes blink{0%,93%,100%{transform:scaleY(1)}96%{transform:scaleY(.08)}}
+@keyframes wave{0%,100%{transform:rotate(-8deg)}50%{transform:rotate(12deg)}}
+@keyframes conf{0%{transform:translateY(-12px) rotate(0);opacity:1}100%{transform:translateY(40px) rotate(200deg);opacity:0}}
+@media(prefers-reduced-motion:no-preference){
+.prog i{transition:width .25s}
+.av-bob{animation:bob 3.2s ease-in-out infinite}
+.av-blink{transform-box:fill-box;transform-origin:center;animation:blink 4.5s infinite}
+.av-wave{transform-origin:160px 178px;animation:wave 1.1s ease-in-out infinite}
+.av-conf rect{animation:conf 1.8s linear infinite}
+}
+</style>
+</head>
+<body>
+<div class="bar"></div>
+<header id="hd"><button onclick="goHome()" aria-label="Accueil M.Michel"><img src="/avatar.webp" width="40" height="40" alt=""><span>M.Michel</span></button></header>
+<main id="app"></main>
+<script src="/avatar.js"></script>
+<script>
+/* ---------- Réseau ---------- */
+const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
+async function api(path,method,body,keepalive){
+  const h={'Content-Type':'application/json'};
+  const tk=store.get('mm_token');if(tk&&path.indexOf('/api/quizzes')===0||tk&&path.indexOf('/api/results')===0||tk&&path==='/api/me')h.Authorization='Bearer '+tk;
+  let r;
+  try{r=await fetch(path,{method:method||'GET',headers:h,body:body?JSON.stringify(body):undefined,keepalive:!!keepalive})}
+  catch(e){throw{message:'Pas de connexion. Vérifie ton réseau et réessaie.',status:0}}
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok){
+    if(r.status===401&&path.indexOf('/api/')===0&&h.Authorization){store.del('mm_token');S.teacher=false;S.view='home';render()}
+    throw{message:j.error||'Une erreur est survenue.',status:r.status};
+  }
+  return j;
+}
+
+/* ---------- Outils ---------- */
+const app=()=>document.getElementById('app');
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtT=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const SUBJECTS=['Informatique','Éducation à la citoyenneté','Éducation esthétique et artistique','Autre'];
+let S={view:'home',err:'',busy:false};
+let timerId=null;
+const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.','Réfléchis avec tes propres mots.','Tu y es presque, courage !'];
+
+function go(v){S.view=v;S.err='';render()}
+function goHome(){if(S.view==='take')return;go('home')}
+function render(){
+  const v={home:vHome,intro:vIntro,take:vTake,done:vDone,thome:vTHome,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  app().innerHTML=v();
+  document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
+  window.scrollTo(0,0);
+  if(S.view==='take')tick();
+}
+function setErr(m){S.err=m;S.busy=false;render()}
+
+/* ---------- Accueil : un seul code pour tout le monde ---------- */
+function vHome(){return `
+${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commencer.',150)}
+<h1>M.Michel</h1>
+<p class="lead">Quiz et devoirs.</p>
+<label for="code">Ton code</label>
+<input type="text" id="code" autocomplete="off" autocapitalize="none" spellcheck="false" onkeydown="if(event.key==='Enter')homeGo()">
+<p></p>
+<button class="btn primary" id="hb" onclick="homeGo()" ${S.busy?'disabled':''}>Continuer</button>
+${S.token?'<button class="btn" onclick="backToTeacher()">Retour à mon espace</button>':''}`}
+
+async function homeGo(){
+  const code=document.getElementById('code').value.trim();
+  if(!code){S.err='Entre ton code.';return render()}
+  S.busy=true;document.getElementById('hb').disabled=true;
+  try{
+    const r=await api('/api/login','POST',{code});
+    S.busy=false;
+    if(r.role==='teacher'){store.set('mm_token',r.token);S.token=true;return enterTeacher()}
+    S.quiz=r.quiz;S.code=code.toUpperCase();go('intro');
+  }catch(e){setErr(e.message)}
+}
+function backToTeacher(){enterTeacher()}
+function enterTeacher(){S.view='thome';S.quizzes=null;render();loadTHome()}
+
+/* ---------- Élève : nom, règles, début ---------- */
+function vIntro(){const q=S.quiz;return `
+<button class="back" onclick="go('home')">‹ Changer de code</button>
+${mascot(S.err?'oops':'hello',S.err||'Entre ton nom, lis les règles, puis lance-toi !',96,'small')}
+<h2>${esc(q.title)}</h2>
+<p><span class="tag">${esc(q.subject)}</span><span class="tag">${q.mode==='devoir'?'Devoir':'Quiz'}</span>${q.level?`<span class="tag">${esc(q.level)}</span>`:''}</p>
+<p>${q.n} question${q.n>1?'s':''}${q.minutes>0?` · ${q.minutes} minute${q.minutes>1?'s':''} au total`:' · pas de limite de temps'}</p>
+<label for="nm">Prénom et nom</label>
+<input type="text" id="nm" autocomplete="name" value="${esc(S.name||'')}">
+<div class="card" style="margin-top:18px"><h3>Avant de commencer</h3>
+<ul class="rules">
+<li>Une question à la fois. Tu ne peux pas revenir en arrière.</li>
+<li>Copier-coller est désactivé : écris avec tes propres mots.</li>
+<li>Quitter cette page est enregistré et visible par ton professeur.</li>
+<li>Tu ne peux rendre ce travail qu'une seule fois.</li>
+</ul></div>
+<button class="btn primary" id="sb" onclick="startRun()" ${S.busy?'disabled':''}>Je suis prêt, commencer</button>`}
+
+async function startRun(){
+  const name=document.getElementById('nm').value.trim().replace(/\s+/g,' ');
+  S.name=name;
+  if(name.length<3){S.err='Entre ton prénom et ton nom.';return render()}
+  document.getElementById('sb').disabled=true;
+  const lk='mm_att:'+S.code+':'+name.toLowerCase();
+  try{
+    const r=await api('/api/start','POST',{code:S.code,name,token:store.get(lk)});
+    if(r.done)return showDone(r);
+    store.set(lk,r.token);S.token_att=r.token;
+    beginRun(r.state);
+  }catch(e){setErr(e.message)}
+}
+function beginRun(st){
+  S.run={i:st.i,total:st.total,q:st.question,sel:null,flags:Object.assign({paste:0,leave:0,leaveMs:0,jump:0},st.flags),qStart:Date.now(),end:st.remaining!==null?Date.now()+st.remaining:null,hiddenAt:null,sending:false,finishing:false,warned:false,mood:'think',say:SAY[0]};
+  window.onbeforeunload=e=>{e.preventDefault();e.returnValue='';return ''};
+  history.pushState(null,'',location.href);
+  window.onpopstate=()=>history.pushState(null,'',location.href);
+  clearInterval(timerId);timerId=setInterval(tick,1000);
+  S.err='';S.view='take';render();
+}
+function tick(){
+  const r=S.run;if(!r||S.view!=='take')return;
+  if(!r.end)return;
+  const left=r.end-Date.now();
+  const el=document.getElementById('timer');
+  if(el){el.textContent=fmtT(left);el.classList.toggle('low',left<60000)}
+  if(left<60000&&left>0&&!r.warned){r.warned=true;setMood('wow',"Plus qu'une minute !")}
+  if(left<=0&&!r.finishing)timeUp();
+}
+function body(extra){return Object.assign({code:S.code,name:S.name,token:S.token_att,flags:S.run?S.run.flags:undefined},extra||{})}
+function sendFlags(){if(S.run&&S.view==='take')api('/api/flags','POST',body(),true).catch(()=>{})}
+document.addEventListener('visibilitychange',()=>{
+  const r=S.run;if(!r||S.view!=='take')return;
+  if(document.hidden){r.hiddenAt=Date.now();r.flags.leave++;sendFlags()}
+  else if(r.hiddenAt){r.flags.leaveMs+=Date.now()-r.hiddenAt;r.hiddenAt=null;sendFlags()}
+});
+
+function vTake(){
+  const r=S.run,q=r.q;
+  let inp='';
+  if(q.t==='qcm')inp=q.opts.map((o,k)=>`<button class="opt ${r.sel===k?'sel':''}" onclick="pick(${k})">${esc(o)}</button>`).join('');
+  else if(q.t==='vf')inp=['Vrai','Faux'].map((o,k)=>`<button class="opt ${r.sel===k?'sel':''}" onclick="pick(${k})">${o}</button>`).join('');
+  else if(q.t==='court')inp=`<input type="text" id="txt" autocomplete="off" aria-label="Ta réponse" placeholder="Ta réponse" oninput="onTxt(event)" onpaste="return noPaste(event)" ondrop="return noPaste(event)">`;
+  else inp=`<textarea id="txt" aria-label="Ta réponse" placeholder="Écris ta réponse avec tes propres mots" oninput="onTxt(event)" onpaste="return noPaste(event)" ondrop="return noPaste(event)"></textarea>`;
+  const why=q.why?`<label for="why">Explique ta réponse en une ou deux phrases</label><textarea id="why" oninput="onTxt(event)" onpaste="return noPaste(event)" ondrop="return noPaste(event)"></textarea>`:'';
+  const last=r.i===r.total-1;
+  return `
+<div class="top"><span>Question ${r.i+1} sur ${r.total}</span>${r.end?`<span class="timer" id="timer">${fmtT(r.end-Date.now())}</span>`:''}</div>
+<div class="prog"><i style="width:${(r.i/r.total)*100}%"></i></div>
+<div id="mc">${mascot(r.mood,r.say,72,'small')}</div>
+<p class="qtext" oncopy="return false" oncontextmenu="return false">${esc(q.q)}</p>
+${inp}${why}
+<p class="err" id="msg" role="status">${esc(S.err)}</p>
+<button class="btn primary" id="nx" onclick="next()" ${canNext()?'':'disabled'}>${last?'Terminer et rendre':'Valider et continuer'}</button>`}
+
+function canNext(){
+  const r=S.run,q=r.q;
+  const t=document.getElementById('txt'),w=document.getElementById('why');
+  let ok;
+  if(q.t==='qcm'||q.t==='vf')ok=r.sel!==null;
+  else ok=!!(t&&t.value.trim().length>0);
+  if(ok&&q.why)ok=!!(w&&w.value.trim().length>=10);
+  return ok&&!r.sending;
+}
+function pick(k){const r=S.run;r.sel=k;S.err='';const w=document.getElementById('why');const wv=w?w.value:'';render();const nw=document.getElementById('why');if(nw){nw.value=wv;nw.dataset.prev=wv.length}upd()}
+function upd(){const b=document.getElementById('nx');if(b)b.disabled=!canNext()}
+function onTxt(e){
+  const el=e.target,prev=+(el.dataset.prev||0),d=el.value.length-prev;
+  if(/paste|drop/i.test(e.inputType||''))S.run.flags.paste++;
+  else if(d>20&&!e.isComposing)S.run.flags.jump++;
+  el.dataset.prev=el.value.length;upd();
+}
+function setMood(m,t){const r=S.run;if(!r)return;r.mood=m;r.say=t;const el=document.getElementById('mc');if(el)el.innerHTML=mascot(m,t,72,'small')}
+function noPaste(e){S.run.flags.paste++;setMood('oops','Coller est désactivé : écris avec tes propres mots.');return false}
+function current(){
+  const r=S.run,q=r.q,t=document.getElementById('txt'),w=document.getElementById('why');
+  const given=(q.t==='qcm'||q.t==='vf')?r.sel:(t?t.value:'');
+  return{given,why:w?w.value:''};
+}
+async function next(){
+  const r=S.run;if(!canNext())return;
+  r.sending=true;upd();
+  try{
+    const res=await api('/api/answer','POST',body(current()));
+    r.sending=false;
+    if(res.done)return showDone(res);
+    r.i=res.state.i;r.q=res.state.question;r.sel=null;r.qStart=Date.now();S.err='';if(!r.warned){r.mood='think';r.say=SAY[r.i%SAY.length]}render();
+  }catch(e){r.sending=false;S.err=e.message;render()}
+}
+async function timeUp(){
+  const r=S.run;if(r.finishing)return;r.finishing=true;
+  try{
+    const res=await api('/api/finish','POST',body(current()));
+    showDone(res);
+  }catch(e){
+    if(e.status===400){setTimeout(()=>{r.finishing=false},2000)}
+    else{S.err=e.message;r.finishing=false;render()}
+  }
+}
+function showDone(res){
+  clearInterval(timerId);window.onbeforeunload=null;window.onpopstate=null;
+  S.run=null;S.result=res;S.view='done';render();
+}
+function vDone(){
+  const res=S.result,sc=res.summary||{s:0,t:0,p:0};
+  const auto=sc.t-sc.p,ratio=auto>0?sc.s/auto:1;
+  const mood=res.timeUp?'oops':ratio>=0.7?'cheer':ratio>=0.4?'happy':'oops';
+  const say=res.timeUp?'Le temps est écoulé, mais ton travail est bien rendu.':ratio>=0.7?'Bravo ! Excellent travail !':ratio>=0.4?'Bien joué ! Continue comme ça.':'Courage ! Relis ton cours, tu vas progresser.';
+  return `${mascot(mood,say,150)}
+<h2>Travail rendu</h2>
+${res.timeUp?'<p class="err">Le temps était écoulé : les réponses non données comptent comme fausses.</p>':''}
+<div class="card"><p style="margin:0">Score automatique : <b>${sc.s} / ${sc.t}</b></p>
+${sc.p?`<p class="hint">${sc.p} question${sc.p>1?'s':''} rédigée${sc.p>1?'s':''} à corriger par ton professeur.</p>`:''}</div>
+<p class="muted">Tu peux fermer cette page.</p>
+<button class="btn" onclick="S.name='';go('home')">Retour à l'accueil</button>`}
+
+function score(res){
+  let s=0,p=0;
+  res.answers.forEach((a,i)=>{const m=res.manual?res.manual[i]:undefined;const e=(m!==undefined&&m!==null)?m:(a.ok===true?1:a.ok===false?0:null);if(e===1)s++;else if(e===null)p++});
+  return{s,p,t:res.total||res.answers.length};
+}
+
+/* ---------- Professeur : accueil ---------- */
+async function loadTHome(){
+  try{const r=await api('/api/quizzes');S.quizzes=r.quizzes}catch(e){S.quizzes=[];S.err=e.message}
+  if(S.view==='thome')render();
+}
+function vTHome(){
+  const L=S.quizzes;
+  if(!L)return '<p class="muted">Chargement…</p>';
+  return `${mascot('hello',L.length?'Bonjour M.Michel ! Voici tes quiz et devoirs.':'Bonjour M.Michel ! Crée ton premier quiz.',110)}
+<h2>Mes quiz et devoirs</h2>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<button class="btn primary" onclick="newQuiz()">Créer un quiz ou un devoir</button>
+${L.length?L.map(q=>`<div class="card">
+<h3>${esc(q.title)}</h3>
+<p style="margin:0 0 8px"><span class="tag">${esc(q.subject)}</span><span class="tag">${q.mode==='devoir'?'Devoir':'Quiz'}</span>${q.level?`<span class="tag">${esc(q.level)}</span>`:''}</p>
+<p style="margin:0 0 10px">Code élève : <span class="code">${esc(q.id)}</span></p>
+<p class="hint" style="margin:0 0 12px">${q.qs.length} question${q.qs.length>1?'s':''} · ${q.n} copie${q.n>1?'s':''}</p>
+<button class="btn small primary" onclick="openRes('${esc(q.id)}')">Résultats</button>
+<button class="btn small" onclick="editQuiz('${esc(q.id)}')">Modifier</button>
+<button class="btn small danger" onclick="delQuiz('${esc(q.id)}')">Supprimer</button>
+</div>`).join(''):'<p class="muted">Donne ensuite son code à tes élèves.</p>'}
+<p></p>
+<button class="btn" onclick="S.name='';S.view='home';render()">Voir la page des élèves</button>
+<button class="btn" onclick="logout()">Me déconnecter de cet appareil</button>`}
+function logout(){store.del('mm_token');S.token=false;go('home')}
+async function delQuiz(id){
+  if(!confirm('Supprimer ce quiz et toutes ses copies ?'))return;
+  try{await api('/api/quizzes/'+id,'DELETE');loadTHome()}catch(e){S.err=e.message;render()}
+}
+
+/* ---------- Professeur : éditeur ---------- */
+function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
+function newQuiz(){S.d={id:'',title:'',subject:SUBJECTS[0],level:'',mode:'quiz',minutes:15,deadline:'',draw:0,qs:[blankQ('qcm')]};S.err='';S.view='editor';render()}
+async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
+function vEditor(){
+  const d=S.d;
+  return `<button class="back" onclick="enterTeacher()">‹ Annuler</button>
+${mascot('hello','Écris tes questions, je m\'occupe du reste !',84,'small')}
+<h2>${d.id?'Modifier':'Nouveau'} ${d.mode==='devoir'?'devoir':'quiz'}</h2>
+<label for="f1">Titre</label><input type="text" id="f1" value="${esc(d.title)}" oninput="S.d.title=this.value">
+<label for="f2">Matière</label><select id="f2" onchange="S.d.subject=this.value">${SUBJECTS.map(s=>`<option ${s===d.subject?'selected':''}>${esc(s)}</option>`).join('')}</select>
+<label for="f3">Classe ou niveau (facultatif)</label><input type="text" id="f3" placeholder="ex : 8e année fondamentale, NS2" value="${esc(d.level)}" oninput="S.d.level=this.value">
+<label for="f4">Type</label><select id="f4" onchange="S.d.mode=this.value;render()"><option value="quiz" ${d.mode==='quiz'?'selected':''}>Quiz (en classe, chronométré)</option><option value="devoir" ${d.mode==='devoir'?'selected':''}>Devoir (à la maison)</option></select>
+<label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">
+<label for="f6">Date limite (facultatif)</label><input type="date" id="f6" value="${esc(d.deadline)}" oninput="S.d.deadline=this.value">
+<label for="f7">Questions tirées au hasard par élève (0 = toutes)</label><input type="number" id="f7" min="0" value="${d.draw}" oninput="S.d.draw=Math.max(0,+this.value||0)">
+<p class="hint">Astuce : écris 20 questions et fais-en tirer 10. Chaque élève reçoit un quiz différent, dans un ordre différent.</p>
+<h3 style="margin-top:24px">Questions</h3>
+${d.qs.map(qCard).join('')}
+<p class="hint">Ajouter une question :</p>
+<button class="btn small" onclick="addQ('qcm')">Choix multiple</button><button class="btn small" onclick="addQ('vf')">Vrai ou faux</button><button class="btn small" onclick="addQ('court')">Réponse courte</button><button class="btn small" onclick="addQ('long')">Réponse rédigée</button>
+${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
+<p></p>
+<button class="btn primary" onclick="saveQuiz()">Enregistrer</button>`}
+function qCard(q,i){
+  let b='';
+  if(q.t==='qcm')b=q.opts.map((o,k)=>`<div class="row"><input type="radio" name="c${i}" ${q.a===k?'checked':''} onchange="S.d.qs[${i}].a=${k}" aria-label="Bonne réponse : choix ${k+1}"><input type="text" class="grow" value="${esc(o)}" placeholder="Choix ${k+1}" aria-label="Choix ${k+1}" oninput="S.d.qs[${i}].opts[${k}]=this.value"></div>`).join('')+'<p class="hint">Coche la bonne réponse.</p>';
+  else if(q.t==='vf')b=['vrai','faux'].map(v=>`<label class="check"><input type="radio" name="c${i}" ${q.a===v?'checked':''} onchange="S.d.qs[${i}].a='${v}'"> ${v==='vrai'?'Vrai':'Faux'} est la bonne réponse</label>`).join('');
+  else if(q.t==='court')b=`<label for="a${i}">Réponses acceptées, séparées par |</label><input type="text" id="a${i}" placeholder="ex : mémoire vive | RAM" value="${esc(q.a)}" oninput="S.d.qs[${i}].a=this.value">`;
+  else b='<p class="hint">Réponse rédigée : tu la corriges toi-même dans les résultats.</p>';
+  return `<div class="card">
+<div class="row"><select class="grow" aria-label="Type de la question ${i+1}" onchange="setT(${i},this.value)">
+<option value="qcm" ${q.t==='qcm'?'selected':''}>Choix multiple</option><option value="vf" ${q.t==='vf'?'selected':''}>Vrai ou faux</option><option value="court" ${q.t==='court'?'selected':''}>Réponse courte</option><option value="long" ${q.t==='long'?'selected':''}>Réponse rédigée</option></select>
+<button class="btn small danger" style="margin:0" onclick="delQ(${i})" aria-label="Retirer la question ${i+1}">Retirer</button></div>
+<label for="q${i}">Question ${i+1}</label><textarea id="q${i}" oninput="S.d.qs[${i}].q=this.value">${esc(q.q)}</textarea>
+${b}
+${q.t!=='long'?`<label class="check"><input type="checkbox" ${q.why?'checked':''} onchange="S.d.qs[${i}].why=this.checked"> Demander à l'élève d'expliquer sa réponse</label>`:''}
+</div>`}
+function setT(i,t){const old=S.d.qs[i];const n=blankQ(t);n.q=old.q;n.why=t==='long'?false:old.why;S.d.qs[i]=n;render()}
+function addQ(t){S.d.qs.push(blankQ(t));render();window.scrollTo(0,document.body.scrollHeight)}
+function delQ(i){if(S.d.qs.length<2)return;S.d.qs.splice(i,1);render()}
+async function saveQuiz(){
+  try{await api('/api/quizzes','POST',S.d);enterTeacher()}
+  catch(e){S.err=e.message;render();window.scrollTo(0,document.body.scrollHeight)}
+}
+
+/* ---------- Professeur : résultats ---------- */
+async function openRes(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{const r=await api('/api/quizzes/'+id+'/results');S.rq=r.quiz;S.rl=r.results;S.err='';S.view='results';render()}
+  catch(e){S.err=e.message;S.view='thome';render()}
+}
+function flagTags(f){
+  let h='';
+  if(f.paste)h+=`<span class="tag warn">Collage tenté ×${f.paste}</span>`;
+  if(f.leave)h+=`<span class="tag warn">A quitté la page ×${f.leave} (${fmtT(f.leaveMs)})</span>`;
+  if(f.jump)h+=`<span class="tag warn">Texte apparu d'un coup ×${f.jump}</span>`;
+  return h||'<span class="tag ok">Aucun signal</span>';
+}
+function vResults(){
+  const q=S.rq,L=S.rl,done=L.filter(r=>r.finished);
+  const tot=done.reduce((a,r)=>a+score(r).s,0),mx=done.length?score(done[0]).t:0;
+  return `<button class="back" onclick="enterTeacher()">‹ Mes quiz</button>
+<h2>${esc(q.title)}</h2>
+<p>Code élève : <span class="code">${esc(q.id)}</span></p>
+<p class="hint">${done.length} copie${done.length>1?'s':''} rendue${done.length>1?'s':''}${done.length?` · moyenne ${(tot/done.length).toFixed(1)} / ${mx}`:''}</p>
+<button class="btn small" onclick="openRes('${esc(q.id)}')">Actualiser</button>
+${L.length?L.map((r,i)=>{const sc=score(r);return `<div class="card">
+<h3>${esc(r.name)}</h3>
+<p style="margin:0 0 8px">${r.finished?`<b>${sc.s} / ${sc.t}</b>${sc.p?` <span class="muted">· ${sc.p} à corriger</span>`:''} <span class="muted">· ${fmtT(r.ms)}</span>${r.timeUp?' <span class="bad">· temps écoulé</span>':''}`:`<span class="tag warn">En cours · ${r.answers.length}/${r.total} questions</span>`}</p>
+<p style="margin:0 0 10px">${flagTags(r.flags)}</p>
+<button class="btn small primary" onclick="openDetail(${i})">Voir les réponses</button>
+</div>`}).join(''):mascot('think','Personne n\'a encore commencé ce travail.',96,'small')}`}
+function openDetail(i){S.cur=S.rl[i];S.view='detail';render()}
+function vDetail(){
+  const r=S.cur,sc=score(r);
+  return `<button class="back" onclick="go('results')">‹ Résultats</button>
+<h2>${esc(r.name)}</h2>
+<p><b>${sc.s} / ${sc.t}</b> <span class="muted">· ${fmtT(r.ms)}${r.finished?'':' · en cours'}</span></p>
+<p>${flagTags(r.flags)}</p>
+${r.answers.map((a,i)=>{
+  const m=r.manual?r.manual[i]:undefined;const e=(m!==undefined&&m!==null)?m:(a.ok===true?1:a.ok===false?0:null);
+  const st=e===1?'<span class="good">Juste</span>':e===0?'<span class="bad">Faux</span>':'<span class="tag warn">À corriger</span>';
+  return `<div class="card"><p class="muted" style="margin:0">Question ${i+1} · ${fmtT(a.ms)} ${st}</p>
+<p style="white-space:pre-wrap"><b>${esc(a.q)}</b></p>
+<div class="ans"><span class="muted">Réponse de l'élève</span><b style="white-space:pre-wrap">${esc(a.given)||'(vide)'}</b></div>
+${a.t!=='long'?`<div class="ans"><span class="muted">Réponse attendue</span><b>${esc(a.correct)}</b></div>`:''}
+${a.why?`<div class="ans"><span class="muted">Explication de l'élève</span><b style="white-space:pre-wrap">${esc(a.why)}</b></div>`:''}
+<div style="margin-top:12px"><button class="btn small" onclick="mark(${i},1)">Juste</button><button class="btn small" onclick="mark(${i},0)">Faux</button></div></div>`}).join('')}
+<button class="btn danger" onclick="allowRetry()">Supprimer cette copie (l'élève pourra refaire)</button>`}
+async function mark(i,v){
+  const r=S.cur;
+  try{await api('/api/results/'+S.rq.id+'/'+r.key+'/mark','POST',{i,v});r.manual=r.manual||{};r.manual[i]=v;render()}
+  catch(e){alert(e.message)}
+}
+async function allowRetry(){
+  if(!confirm('Supprimer cette copie ?'))return;
+  try{await api('/api/results/'+S.rq.id+'/'+S.cur.key,'DELETE');openRes(S.rq.id)}catch(e){alert(e.message)}
+}
+
+/* ---------- Démarrage : si cet appareil est reconnu, on ouvre l'espace professeur ---------- */
+(async function boot(){
+  if(store.get('mm_token')){
+    try{await api('/api/me');S.token=true;return enterTeacher()}catch(e){if(e.status===401)S.token=false}
+  }
+  render();
+})();
+</script>
+</body>
+</html>

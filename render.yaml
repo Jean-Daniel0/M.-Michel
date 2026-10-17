@@ -1,0 +1,20 @@
+databases:
+  - name: m-michel-db
+    plan: free
+    databaseName: mmichel
+    user: mmichel
+services:
+  - type: web
+    name: m-michel
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: TEACHER_CODE
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: m-michel-db
+          property: connectionString
