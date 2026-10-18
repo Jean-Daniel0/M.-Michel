@@ -41,6 +41,13 @@ h3{font-size:1.1rem}
 .titlebar img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;flex:none}
 .titlebar b{font:700 1.2rem Georgia,"Times New Roman",serif;letter-spacing:.01em}
 .titlebar span{margin-left:auto;font-size:.8rem;opacity:.85;text-align:right}
+.subjects{margin:34px 0 8px}
+.subjects h2{margin:0 0 4px}
+.sj{display:grid;gap:12px;margin-top:12px}
+.sj figure{margin:0;position:relative;border-radius:14px;overflow:hidden;background:var(--soft);aspect-ratio:16/8}
+.sj img,.cover{display:block;width:100%;height:100%;object-fit:cover}
+.sj figcaption{position:absolute;left:0;right:0;bottom:0;padding:26px 14px 10px;color:#fff;font:700 1.05rem Georgia,"Times New Roman",serif;background:linear-gradient(180deg,rgba(10,20,60,0),rgba(10,20,60,.85))}
+.cover{height:110px;border-radius:10px;margin:0 0 12px}
 .contact{margin:34px 0 8px}
 .contact h2{margin:0 0 4px}
 .soc{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
@@ -187,6 +194,12 @@ const SOCIAL=[
  ['Instagram','instagram','https://www.instagram.com/dany_mj6/'],
  ['WhatsApp','whatsapp','https://wa.me/50941953739']
 ];
+const SUBJ_IMG={'Informatique':'/matiere-info.webp','Éducation à la citoyenneté':'/matiere-civisme.webp','Éducation esthétique et artistique':'/matiere-art.webp'};
+function vSubjects(){return `<section class="subjects" aria-labelledby="sjt">
+<h2 id="sjt">Mes matières</h2>
+<p class="hint" style="margin:0">Ce que nous travaillons ensemble.</p>
+<div class="sj">${SUBJECTS.slice(0,3).map(s=>`<figure><img src="${SUBJ_IMG[s]}" alt="" loading="lazy"><figcaption>${esc(s)}</figcaption></figure>`).join('')}</div>
+</section>`}
 function vContact(){return `<section class="contact" aria-labelledby="ctt">
 <h2 id="ctt">Mon Contact</h2>
 <p class="hint" style="margin:0">Une question ? Écris-moi sur le réseau de ton choix.</p>
@@ -210,7 +223,8 @@ ${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commenc
 <p></p>
 <button class="btn primary" id="hb" onclick="homeGo()" ${S.busy?'disabled':''}>Continuer</button>
 ${S.token?'<button class="btn" onclick="backToTeacher()">Retour à mon espace</button>':''}
-${vContact()}`}
+${vContact()}
+${vSubjects()}`}
 
 async function homeGo(){
   const code=document.getElementById('code').value.trim();
@@ -234,6 +248,7 @@ ${mascot(S.err?'oops':'hello',S.err||'Voici les travaux de ta classe.',96,'small
 <h2>${esc(S.cls.name)}</h2>
 ${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
 ${L.length?L.map((d,i)=>`<div class="card">
+${SUBJ_IMG[d.subject]?`<img class="cover" src="${SUBJ_IMG[d.subject]}" alt="" loading="lazy">`:''}
 <h3>${esc(d.title)}</h3>
 <p style="margin:0 0 10px"><span class="tag">${esc(d.subject)}</span><span class="tag">${TYPE[d.mode]||'Quiz'}</span>${d.deadline?`<span class="tag ${d.closed?'warn':''}">${d.closed?'Terminé':'Avant le '+fmtDate(d.deadline)}</span>`:''}${d.minutes>0?`<span class="tag">${d.minutes} min</span>`:''}</p>
 ${d.hasBrief?`<button class="btn small" onclick="openBrief(${i})">Lire le libellé</button>`:''}
