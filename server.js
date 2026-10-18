@@ -71,12 +71,12 @@ const str = (s, n) => String(s == null ? '' : s).slice(0, n);
 
 /* limite d'essais de connexion */
 const tries = new Map();
-function limited(req) {
+function limited(req, max = 15) {
   const ip = req.ip, now = Date.now();
   const rec = (tries.get(ip) || []).filter(t => now - t < 60000);
   rec.push(now); tries.set(ip, rec);
   if (tries.size > 5000) tries.clear();
-  return rec.length > 15;
+  return rec.length > max;
 }
 
 /* ---------- Quiz ---------- */
@@ -132,12 +132,14 @@ function cleanQuiz(d) {
     draw: mode === 'libelle' ? 0 : Math.max(0, Math.min(qs.length, parseInt(d.draw) || 0)),
     qs,
     draft: !!d.draft,
+    period: str(d.period, 40).trim(),
+    coef: Math.max(0.5, Math.min(10, Math.round((parseFloat(d.coef) || 1) * 2) / 2)),
     created: d.created || Date.now(),
   };
 }
 const deadlinePassed = q => q.deadline && new Date(q.deadline + 'T23:59:59') < new Date();
 const publicInfo = q => ({
-  id: q.id, title: q.title, subject: q.subject, level: q.level, mode: q.mode, minutes: q.minutes, deadline: q.deadline,
+  id: q.id, period: q.period || '', title: q.title, subject: q.subject, level: q.level, mode: q.mode, minutes: q.minutes, deadline: q.deadline,
   n: q.draw > 0 ? Math.min(q.draw, q.qs.length) : q.qs.length,
   hasBrief: !!briefText(q.brief), hasQs: q.qs.length > 0, closed: !!deadlinePassed(q),
 });
@@ -218,6 +220,60 @@ app.use((req, res, next) => { res.set({ 'X-Content-Type-Options': 'nosniff', 'Re
 const wrap = fn => (req, res) => fn(req, res).catch(e => { console.error(e); res.status(500).json({ error: 'Erreur du serveur. Réessaie.' }); });
 const fail = (res, code, msg) => res.status(code).json({ error: msg });
 
+
+/* ---------- Comptes élèves ---------- */
+const DEFAULT_PERIODS = ['1re étape', '2e étape', '3e étape'];
+const periodsOf = c => (c && Array.isArray(c.periods) && c.periods.length ? c.periods : DEFAULT_PERIODS);
+const pseudoKey = p => String(p || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9._-]/g, '');
+const stuKey = (cid, pk) => 'stu:' + cid + ':' + pk;
+function hashPw(pw, salt) { salt = salt || crypto.randomBytes(16).toString('hex'); return { salt, h: crypto.scryptSync(String(pw), salt, 32).toString('hex') }; }
+function checkPw(pw, rec) {
+  if (!rec || !rec.salt || !rec.h) return false;
+  const a = crypto.scryptSync(String(pw), rec.salt, 32), b = Buffer.from(rec.h, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+const lockMap = new Map();
+function locked(k) { const r = (lockMap.get(k) || []).filter(t => Date.now() - t < 600000); lockMap.set(k, r); return r.length >= 8; }
+function noteFail(k) { const r = lockMap.get(k) || []; r.push(Date.now()); lockMap.set(k, r); if (lockMap.size > 5000) lockMap.clear(); }
+const studentToken = (cid, pk) => sign({ r: 's', c: cid, u: pk, exp: Date.now() + 120 * 864e5 });
+async function sauth(req, res, next) {
+  try {
+    const p = verify((req.get('authorization') || '').replace(/^Bearer /, ''));
+    if (!p || p.r !== 's') return fail(res, 401, 'Connecte-toi pour continuer.');
+    const rec = await kv.get(stuKey(p.c, p.u));
+    if (!rec) return fail(res, 401, 'Compte introuvable. Connecte-toi de nouveau.');
+    req.st = { cid: p.c, pk: p.u, sid: 'u_' + p.u, name: rec.name, pseudo: rec.pseudo };
+    next();
+  } catch (e) { console.error(e); fail(res, 500, 'Erreur du serveur. Réessaie.'); }
+}
+function attScore(a) {
+  let s = 0, g = 0, p = 0;
+  (a.answers || []).forEach((x, i) => {
+    const m = a.manual && a.manual[i];
+    const e = (m === 0 || m === 1) ? m : (x.ok === true ? 1 : x.ok === false ? 0 : null);
+    if (e === null) p++; else { g++; if (e === 1) s++; }
+  });
+  return { s, g, p, score10: g ? Math.round(100 * s / g) / 10 : null };
+}
+async function gradedQuizzes(cid) { return (await classQuizzes(cid)).filter(q => !q.draft && q.qs.length); }
+async function studentHistory(cid, sid, quizzes) {
+  quizzes = quizzes || await gradedQuizzes(cid);
+  const out = [];
+  for (const q of quizzes) {
+    const a = await kv.get(attKey(q.id, sid));
+    if (!a || !a.finished) continue;
+    const sc = attScore(a);
+    out.push({ qid: q.id, title: q.title, period: q.period || '', coef: q.coef || 1, at: a.finishedAt || a.startedAt, ...sc, timeUp: !!a.timeUp });
+  }
+  return out.sort((x, y) => x.at - y.at);
+}
+function weighted(items) {
+  const v = items.filter(x => x.score10 !== null);
+  const w = v.reduce((t, x) => t + (x.coef || 1), 0);
+  return w ? Math.round(10 * v.reduce((t, x) => t + x.score10 * (x.coef || 1), 0) / w) / 10 : null;
+}
+const meanOf = v => { v = v.filter(x => x !== null); return v.length ? Math.round(10 * v.reduce((a, b) => a + b, 0) / v.length) / 10 : null; };
+
 /* Connexion unique : le code du professeur ouvre l'espace prof, un code de classe ouvre la liste de ses travaux */
 app.post('/api/login', wrap(async (req, res) => {
   if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
@@ -226,24 +282,64 @@ app.post('/api/login', wrap(async (req, res) => {
   if (safeEq(code, TEACHER_CODE)) return res.json({ role: 'teacher', token: sign({ r: 't', exp: Date.now() + 30 * 864e5 }) });
   const cls = await kv.get('class:' + code.toUpperCase());
   if (!cls) return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.');
+  res.json({ role: 'class', class: { name: cls.name, level: cls.level || '' } });
+}));
+
+app.post('/api/student/register', wrap(async (req, res) => {
+  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  const cid = str(req.body.code, 8).toUpperCase(), cls = await kv.get('class:' + cid);
+  if (!cls) return fail(res, 404, 'Code de classe introuvable.');
+  const name = str(req.body.name, 80).trim().replace(/\s+/g, ' '), pseudo = str(req.body.pseudo, 20).trim(), pw = str(req.body.password, 64);
+  const pk = pseudoKey(pseudo);
+  if (norm(name).length < 3 || !/\s/.test(name)) return fail(res, 400, 'Écris ton prénom et ton nom.');
+  if (pk.length < 3 || pk !== pseudo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')) return fail(res, 400, 'Le pseudo doit avoir 3 à 20 caractères : lettres, chiffres, point, tiret ou _.');
+  if (pw.length < 4) return fail(res, 400, 'Le mot de passe doit avoir au moins 4 caractères.');
+  if (await kv.get(stuKey(cid, pk))) return fail(res, 409, 'Ce pseudo est déjà pris dans la classe. Choisis-en un autre.');
+  if ((await kv.list('stu:' + cid + ':')).length >= 400) return fail(res, 409, 'La classe est pleine. Préviens ton professeur.');
+  const rec = { name, pseudo: pk, ...hashPw(pw), created: Date.now() };
+  await kv.set(stuKey(cid, pk), rec);
+  res.json({ token: studentToken(cid, pk), student: { name, pseudo: pk } });
+}));
+app.post('/api/student/login', wrap(async (req, res) => {
+  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  const cid = str(req.body.code, 8).toUpperCase(), pk = pseudoKey(str(req.body.pseudo, 20)), pw = str(req.body.password, 64);
+  const lk = cid + ':' + pk;
+  if (locked(lk)) return fail(res, 429, 'Trop d\'erreurs. Attends 10 minutes ou demande à ton professeur de réinitialiser ton mot de passe.');
+  const rec = pk ? await kv.get(stuKey(cid, pk)) : null;
+  if (!rec || !checkPw(pw, rec)) { noteFail(lk); return fail(res, 401, 'Pseudo ou mot de passe incorrect.'); }
+  res.json({ token: studentToken(cid, pk), student: { name: rec.name, pseudo: pk } });
+}));
+app.get('/api/student/me', sauth, wrap(async (req, res) => {
+  const cls = await kv.get('class:' + req.st.cid);
+  if (!cls) return fail(res, 401, 'Classe introuvable.');
   const qs = (await classQuizzes(cls.id)).filter(q => !q.draft);
-  res.json({ role: 'class', class: { name: cls.name, level: cls.level || '' }, devoirs: qs.map(publicInfo) });
+  const devoirs = [];
+  for (const q of qs) {
+    const info = publicInfo(q);
+    if (q.qs.length) {
+      const a = await kv.get(attKey(q.id, req.st.sid));
+      if (a) { const sc = attScore(a); info.mine = { finished: !!a.finished, score10: a.finished ? sc.score10 : null, pending: a.finished ? sc.p : 0 }; }
+    }
+    devoirs.push(info);
+  }
+  res.json({ class: { name: cls.name, level: cls.level || '' }, student: { name: req.st.name, pseudo: req.st.pseudo }, devoirs });
+}));
+app.get('/api/student/history', sauth, wrap(async (req, res) => {
+  const h = await studentHistory(req.st.cid, req.st.sid);
+  res.json({ name: req.st.name, history: h, avg10: weighted(h) });
 }));
 
 /* Libellé d'un devoir (page blanche côté élève) : il faut connaître le code de la classe */
-app.post('/api/brief', wrap(async (req, res) => {
-  if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
-  const classId = str(req.body.code, 8).toUpperCase(), qid = str(req.body.qid, 8).toUpperCase();
+app.post('/api/brief', sauth, wrap(async (req, res) => {
+  const classId = req.st.cid, qid = str(req.body.qid, 8).toUpperCase();
   const quiz = await kv.get('quiz:' + qid);
   if (!quiz || quiz.draft || quiz.classId !== classId || !briefText(quiz.brief)) return fail(res, 404, 'Libellé introuvable.');
   res.json({ title: quiz.title, brief: quiz.brief });
 }));
 
-app.post('/api/start', wrap(async (req, res) => {
-  if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
-  const id = str(req.body.qid, 8).toUpperCase(), classId = str(req.body.code, 8).toUpperCase(), name = str(req.body.name, 80).trim().replace(/\s+/g, ' ');
-  const key = nameKey(name);
-  if (key.length < 3) return fail(res, 400, 'Entre ton prénom et ton nom.');
+app.post('/api/start', sauth, wrap(async (req, res) => {
+  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  const id = str(req.body.qid, 8).toUpperCase(), classId = req.st.cid, name = req.st.name, key = req.st.sid;
   const quiz = await kv.get('quiz:' + id);
   if (!quiz || quiz.draft || quiz.classId !== classId) return fail(res, 404, 'Travail introuvable.');
   if (!quiz.qs.length) return fail(res, 400, 'Ce travail n\'a pas de quiz à passer.');
@@ -265,20 +361,20 @@ app.post('/api/start', wrap(async (req, res) => {
     return { qi, map };
   });
   const now = Date.now();
-  att = { id, name, key, token: crypto.randomBytes(18).toString('base64url'), startedAt: now, qStart: now, endsAt: quiz.minutes > 0 ? now + quiz.minutes * 60000 : null, order, answers: [], flags: { paste: 0, leave: 0, leaveMs: 0, jump: 0 }, finished: false };
+  att = { id, name, key, pseudo: req.st.pseudo, token: crypto.randomBytes(18).toString('base64url'), startedAt: now, qStart: now, endsAt: quiz.minutes > 0 ? now + quiz.minutes * 60000 : null, order, answers: [], flags: { paste: 0, leave: 0, leaveMs: 0, jump: 0 }, finished: false };
   await kv.set(attKey(id, key), att);
   res.json({ token: att.token, state: state(att, quiz) });
 }));
 
 async function loadAtt(req, res) {
-  const id = str(req.body.qid, 8).toUpperCase(), key = nameKey(str(req.body.name, 80));
+  const id = str(req.body.qid, 8).toUpperCase(), key = req.st.sid;
   const [quiz, att] = await Promise.all([kv.get('quiz:' + id), kv.get(attKey(id, key))]);
-  if (!quiz || !att) { fail(res, 404, 'Travail introuvable.'); return null; }
+  if (!quiz || !att || quiz.classId !== req.st.cid) { fail(res, 404, 'Travail introuvable.'); return null; }
   if (!req.body.token || !safeEq(String(req.body.token), att.token)) { fail(res, 403, 'Accès refusé.'); return null; }
   return { id, key, quiz, att };
 }
 
-app.post('/api/answer', wrap(async (req, res) => {
+app.post('/api/answer', sauth, wrap(async (req, res) => {
   const c = await loadAtt(req, res); if (!c) return;
   const { id, key, quiz, att } = c;
   if (att.finished) return res.json({ done: true, timeUp: !!att.timeUp, summary: summary(att) });
@@ -293,7 +389,7 @@ app.post('/api/answer', wrap(async (req, res) => {
   res.json({ done: false, state: state(att, quiz) });
 }));
 
-app.post('/api/finish', wrap(async (req, res) => {
+app.post('/api/finish', sauth, wrap(async (req, res) => {
   const c = await loadAtt(req, res); if (!c) return;
   const { id, key, quiz, att } = c;
   if (att.finished) return res.json({ done: true, timeUp: !!att.timeUp, summary: summary(att) });
@@ -308,7 +404,7 @@ app.post('/api/finish', wrap(async (req, res) => {
   res.json({ done: true, timeUp: true, summary: summary(att) });
 }));
 
-app.post('/api/flags', wrap(async (req, res) => {
+app.post('/api/flags', sauth, wrap(async (req, res) => {
   const c = await loadAtt(req, res); if (!c) return;
   if (c.att.finished) return res.json({ ok: true });
   mergeFlags(c.att, req.body.flags);
@@ -365,12 +461,75 @@ app.get('/api/classes/:id/stats', auth, wrap(async (req, res) => {
   const low = Object.entries(students).map(([name, v]) => ({ name, avg: mean(v), n: v.length })).filter(s => s.avg < 50).sort((a, b) => a.avg - b.avg).slice(0, 5);
   res.json({ class: { id: c.id, name: c.name }, copies: all.length, avg: mean(all), flagged, per, low });
 }));
+app.get('/api/classes/:id/students', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase();
+  const recs = (await Promise.all((await kv.list('stu:' + cid + ':')).map(k => kv.get(k)))).filter(Boolean);
+  recs.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  res.json({ students: recs.map(r => ({ name: r.name, pseudo: r.pseudo, created: r.created })) });
+}));
+app.post('/api/classes/:id/students/:pk/reset', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
+  if (!rec) return fail(res, 404, 'Élève introuvable.');
+  const A = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const pw = Array.from({ length: 6 }, () => A[crypto.randomInt(A.length)]).join('');
+  await kv.set(stuKey(cid, pk), { ...rec, ...hashPw(pw) });
+  lockMap.delete(cid + ':' + pk);
+  res.json({ password: pw });
+}));
+app.delete('/api/classes/:id/students/:pk', auth, wrap(async (req, res) => {
+  await kv.del(stuKey(req.params.id.toUpperCase(), pseudoKey(req.params.pk)));
+  res.json({ ok: true });
+}));
+app.get('/api/classes/:id/carnet', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const period = str(req.query.period, 40), zero = req.query.zero === '1';
+  let quizzes = await gradedQuizzes(c.id);
+  if (period) quizzes = quizzes.filter(q => q.period === period);
+  const rows = new Map();
+  const recs = (await Promise.all((await kv.list('stu:' + c.id + ':')).map(k => kv.get(k)))).filter(Boolean);
+  recs.forEach(r => rows.set('u_' + r.pseudo, { sid: 'u_' + r.pseudo, name: r.name, pseudo: r.pseudo, items: {} }));
+  for (const q of quizzes) {
+    const atts = (await Promise.all((await kv.list('att:' + q.id + ':')).map(k => kv.get(k)))).filter(Boolean);
+    for (const a of atts) {
+      if (!rows.has(a.key)) rows.set(a.key, { sid: a.key, name: a.name, pseudo: '', legacy: true, items: {} });
+      rows.get(a.key).items[q.id] = a.finished ? { ...attScore(a), coef: q.coef || 1 } : { inProgress: true, score10: null, p: 0, coef: q.coef || 1 };
+    }
+  }
+  const students = [...rows.values()].map(r => {
+    const list = quizzes.map(q => {
+      const it = r.items[q.id];
+      if (it && it.score10 !== null && it.score10 !== undefined) return { score10: it.score10, coef: q.coef || 1, p: it.p };
+      return zero ? { score10: 0, coef: q.coef || 1, p: 0, missing: true } : { score10: null, coef: q.coef || 1, p: 0 };
+    });
+    const done = quizzes.filter(q => r.items[q.id] && r.items[q.id].score10 !== null && r.items[q.id].score10 !== undefined).length;
+    const provisional = Object.values(r.items).some(it => it.p > 0);
+    return { sid: r.sid, name: r.name, pseudo: r.pseudo, legacy: !!r.legacy, scores: Object.fromEntries(quizzes.map(q => [q.id, r.items[q.id] ? { score10: r.items[q.id].score10 ?? null, pending: r.items[q.id].p || 0, inProgress: !!r.items[q.id].inProgress } : null])), avg10: weighted(list), done, provisional };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const ranked = students.filter(s => s.avg10 !== null).sort((a, b) => b.avg10 - a.avg10);
+  ranked.forEach((s, i) => { s.rank = i > 0 && ranked[i - 1].avg10 === s.avg10 ? ranked[i - 1].rank : i + 1; });
+  res.json({
+    class: { id: c.id, name: c.name }, periods: periodsOf(c), period, zero,
+    quizzes: quizzes.map(q => ({ id: q.id, title: q.title, coef: q.coef || 1, period: q.period || '', mode: q.mode })),
+    students, classAvg: meanOf(students.map(s => s.avg10)), rankedCount: ranked.length,
+  });
+}));
+app.get('/api/classes/:id/students/:sid/history', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), sid = String(req.params.sid).slice(0, 60);
+  const h = await studentHistory(cid, sid);
+  const rec = sid.startsWith('u_') ? await kv.get(stuKey(cid, sid.slice(2))) : null;
+  const name = rec ? rec.name : (h.length ? ((await kv.get(attKey(h[0].qid, sid))) || {}).name : sid);
+  const c = await kv.get('class:' + cid);
+  const byPeriod = periodsOf(c).map(p => ({ period: p, avg10: weighted(h.filter(x => x.period === p)), n: h.filter(x => x.period === p).length }));
+  res.json({ name: name || sid, history: h, avg10: weighted(h), byPeriod });
+}));
 app.get('/api/classes/:id', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());
   if (!c) return fail(res, 404, 'Classe introuvable.');
   const qs = await classQuizzes(c.id);
   const counts = await Promise.all(qs.map(async q => (await kv.list('att:' + q.id + ':')).length));
   qs.forEach((q, i) => { q.n = counts[i]; delete q.brief; });
+  c.periods = periodsOf(c);
   res.json({ class: c, quizzes: qs });
 }));
 app.post('/api/classes', auth, wrap(async (req, res) => {
@@ -387,6 +546,10 @@ app.post('/api/classes', auth, wrap(async (req, res) => {
     if (!id) return fail(res, 500, 'Impossible de créer un code. Réessaie.');
     c = { id, name, level, created: Date.now() };
   }
+  if (Array.isArray(req.body.periods)) {
+    const ps = [...new Set(req.body.periods.map(x => str(x, 40).trim()).filter(Boolean))].slice(0, 8);
+    if (ps.length) c.periods = ps;
+  }
   await kv.set('class:' + id, c);
   res.json({ class: c });
 }));
@@ -396,6 +559,7 @@ app.delete('/api/classes/:id', auth, wrap(async (req, res) => {
     await Promise.all((await kv.list('att:' + q.id + ':')).map(k => kv.del(k)));
     await kv.del('quiz:' + q.id);
   }
+  await Promise.all((await kv.list('stu:' + id + ':')).map(k => kv.del(k)));
   await kv.del('class:' + id);
   res.json({ ok: true });
 }));
@@ -427,6 +591,8 @@ app.post('/api/quizzes', auth, wrap(async (req, res) => {
     if (!old) return fail(res, 404, 'Quiz introuvable.');
     d.created = old.created;
   }
+  const cl = await kv.get('class:' + d.classId);
+  if (!periodsOf(cl).includes(d.period)) d.period = '';
   await kv.set('quiz:' + d.id, d);
   res.json({ quiz: d });
 }));

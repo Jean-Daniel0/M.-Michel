@@ -89,6 +89,7 @@ body.white .paper{padding:4px 0;border-radius:0}
 label{display:block;font-weight:600;margin:14px 0 4px}
 input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{width:100%;min-height:46px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 textarea{min-height:96px;resize:vertical}
+.grid{border-collapse:collapse;font-size:.9rem;width:100%}.grid th,.grid td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}.grid th{background:var(--soft);color:var(--blue)}.grid td.nm{text-align:left}.grid small{font-weight:400}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 14px}
 .row{display:flex;gap:10px;align-items:center;margin:6px 0}
 .row .grow{flex:1}
@@ -145,16 +146,20 @@ ul.rules li{margin:.4em 0}
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
+const SAUTH=['/api/student/me','/api/student/history','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
 async function api(path,method,body,keepalive){
   const h={'Content-Type':'application/json'};
   const tk=store.get('mm_token');
   if(tk&&AUTH.some(p=>path.indexOf(p)===0))h.Authorization='Bearer '+tk;
+  const st=store.get('mm_st');
+  if(st&&SAUTH.some(p=>path.indexOf(p)===0))h.Authorization='Bearer '+st;
   let r;
   try{r=await fetch(path,{method:method||'GET',headers:h,body:body?JSON.stringify(body):undefined,keepalive:!!keepalive})}
   catch(e){throw{message:'Pas de connexion. Vérifie ton réseau et réessaie.',status:0}}
   let j={};try{j=await r.json()}catch(e){}
   if(!r.ok){
-    if(r.status===401&&h.Authorization){store.del('mm_token');S.token=false;S.view='home';render()}
+    if(r.status===401&&h.Authorization&&AUTH.some(p=>path.indexOf(p)===0)){store.del('mm_token');S.token=false;S.view='home';render()}
+    else if(r.status===401&&h.Authorization&&SAUTH.some(p=>path.indexOf(p)===0)){store.del('mm_st');S.stu=null;if(S.view!=='take'){S.err='Reconnecte-toi.';S.view=S.code?'slogin':'home';render()}}
     throw{message:j.error||'Une erreur est survenue.',status:r.status};
   }
   return j;
@@ -175,7 +180,7 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
 function render(){
-  const v={stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  const v={studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
   document.getElementById('tb').style.display=S.view==='home'?'block':'none';
@@ -237,30 +242,96 @@ async function homeGo(){
     const r=await api('/api/login','POST',{code});
     S.busy=false;
     if(r.role==='teacher'){store.set('mm_token',r.token);S.token=true;return enterTeacher()}
-    S.code=code.toUpperCase();S.cls=r.class;S.devoirs=r.devoirs;go('devoirs');
+    S.code=code.toUpperCase();S.cls=r.class;S.sreg=false;
+    if(store.get('mm_st')&&store.get('mm_sc')===S.code){const ok=await loadMe();if(ok)return go('devoirs')}
+    go('slogin');
   }catch(e){setErr(e.message)}
 }
 function backToTeacher(){enterTeacher()}
 function enterTeacher(){S.view='thome';S.classes=null;render();loadClasses()}
 
+
+/* ---------- Élève : compte (pseudo + mot de passe) ---------- */
+async function loadMe(){
+  try{const r=await api('/api/student/me');S.stu=r.student;S.devoirs=r.devoirs;S.cls=r.class;return true}
+  catch(e){store.del('mm_st');S.stu=null;return false}
+}
+function vSLogin(){
+  const reg=S.sreg;
+  return `<button class="back" onclick="go('home')">‹ Changer de code</button>
+${mascot(S.err?'oops':'hello',S.err||(reg?'Crée ton compte une seule fois. Retiens bien ton pseudo et ton mot de passe !':'Content de te revoir ! Connecte-toi.'),96,'small')}
+<h2>${esc(S.cls.name)}</h2>
+<div class="card">
+${reg?`<label for="rn">Prénom et nom</label><input type="text" id="rn" autocomplete="name" value="${esc(S.f_name||'')}">`:''}
+<label for="ru">Pseudo</label><input type="text" id="ru" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(S.f_pseudo||'')}" placeholder="ex : marie.j">
+${reg?'<p class="hint" style="margin:4px 0 0">3 à 20 caractères : lettres, chiffres, point, tiret ou _.</p>':''}
+<label for="rp">Mot de passe</label><input type="password" id="rp" autocomplete="${reg?'new-password':'current-password'}" onkeydown="if(event.key==='Enter')stuGo()">
+${reg?'<p class="hint" style="margin:4px 0 0">Au moins 4 caractères. Ton professeur ne peut pas le lire, mais il peut le réinitialiser.</p>':''}
+<p></p><button class="btn primary" id="sg" onclick="stuGo()" ${S.busy?'disabled':''}>${reg?'Créer mon compte':'Me connecter'}</button>
+</div>
+<button class="btn" onclick="S.sreg=!S.sreg;S.err='';render()">${reg?"J'ai déjà un compte":"Je n'ai pas encore de compte"}</button>`}
+async function stuGo(){
+  const g=id=>{const e=document.getElementById(id);return e?e.value:''};
+  const pseudo=g('ru').trim(),password=g('rp'),name=g('rn').trim().replace(/\s+/g,' ');
+  S.f_pseudo=pseudo;S.f_name=name;
+  if(!pseudo||!password){S.err='Entre ton pseudo et ton mot de passe.';return render()}
+  if(S.sreg&&(name.length<3||!/\s/.test(name))){S.err='Écris ton prénom et ton nom.';return render()}
+  document.getElementById('sg').disabled=true;
+  try{
+    const r=await api(S.sreg?'/api/student/register':'/api/student/login','POST',{code:S.code,name,pseudo,password});
+    store.set('mm_st',r.token);store.set('mm_sc',S.code);S.f_name='';S.f_pseudo='';
+    if(!(await loadMe()))throw{message:'Connexion impossible. Réessaie.'};
+    go('devoirs');
+  }catch(e){setErr(e.message)}
+}
+function stuLogout(){store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
+const fmtS=v=>v===null||v===undefined?'—':String(v).replace('.',',');
+async function openMyNotes(){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{S.mn=await api('/api/student/history');S.err='';S.view='mynotes';render()}
+  catch(e){S.err=e.message;S.view='devoirs';render()}
+}
+function chart(h){
+  if(!h.length)return '';
+  const W=320,H=130,P=22,n=h.length;
+  const x=i=>n===1?W/2:P+i*(W-2*P)/(n-1),y=v=>H-P-(v/10)*(H-2*P);
+  const pts=h.filter(a=>a.score10!==null);
+  const line=pts.map(a=>x(h.indexOf(a))+','+y(a.score10)).join(' ');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Évolution des notes sur 10" style="display:block;margin:8px 0">
+<line x1="${P}" y1="${y(5)}" x2="${W-P}" y2="${y(5)}" stroke="#c9d3ea" stroke-dasharray="4 4"/>
+<text x="2" y="${y(10)+4}" font-size="10" fill="#667">10</text><text x="6" y="${y(5)+4}" font-size="10" fill="#667">5</text><text x="6" y="${y(0)+4}" font-size="10" fill="#667">0</text>
+<polyline points="${line}" fill="none" stroke="#16358c" stroke-width="2.5"/>
+${pts.map(a=>`<circle cx="${x(h.indexOf(a))}" cy="${y(a.score10)}" r="4.5" fill="#16358c"/>`).join('')}</svg>`;
+}
+function histList(h){return h.length?h.slice().reverse().map(a=>`<div class="ans" style="margin-top:8px;padding-top:8px"><b>${esc(a.title)}</b>${a.period?` <span class="tag">${esc(a.period)}</span>`:''}${a.coef!==1?` <span class="tag">coef ${fmtS(a.coef)}</span>`:''}<span style="display:block">${fmtS(a.score10)} / 10 <span class="muted">· ${a.s}/${a.g}${a.p?` · ${a.p} à corriger`:''}</span></span></div>`).join(''):'<p class="muted">Aucun travail rendu pour le moment.</p>'}
+function vMyNotes(){
+  const t=S.mn;
+  return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
+${mascot('happy','Voici ta progression.',84,'small')}
+<h2>Mes notes</h2>
+<div class="card"><p style="margin:0">Moyenne : <b>${fmtS(t.avg10)} / 10</b></p>${chart(t.history)}</div>
+<div class="card">${histList(t.history)}</div>`}
+
 /* ---------- Élève : travaux de la classe ---------- */
 function vDevoirs(){
   const L=S.devoirs;
   return `<button class="back" onclick="go('home')">‹ Changer de code</button>
-${mascot(S.err?'oops':'hello',S.err||'Voici les travaux de ta classe.',96,'small')}
+${mascot(S.err?'oops':'hello',S.err||('Bonjour '+(S.stu?S.stu.name.split(' ')[0]:'')+' ! Voici les travaux de ta classe.'),96,'small')}
+<p style="margin:0 0 12px"><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small" onclick="stuLogout()">Me déconnecter</button></p>
 <h2>${esc(S.cls.name)}</h2>
 ${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
 ${L.length?L.map((d,i)=>`<div class="card">
 ${SUBJ_IMG[d.subject]?`<img class="cover" src="${SUBJ_IMG[d.subject]}" alt="" loading="lazy">`:''}
 <h3>${esc(d.title)}</h3>
 <p style="margin:0 0 10px"><span class="tag">${esc(d.subject)}</span><span class="tag">${TYPE[d.mode]||'Quiz'}</span>${d.deadline?`<span class="tag ${d.closed?'warn':''}">${d.closed?'Terminé':'Avant le '+fmtDate(d.deadline)}</span>`:''}${d.minutes>0?`<span class="tag">${d.minutes} min</span>`:''}</p>
+${d.mine&&d.mine.finished?`<p style="margin:0 0 10px"><span class="tag ok">Rendu · ${fmtS(d.mine.score10)} / 10${d.mine.pending?' (provisoire)':''}</span></p>`:''}
 ${d.hasBrief?`<button class="btn small" onclick="openBrief(${i})">Lire le libellé</button>`:''}
-${d.hasQs&&!d.closed?`<button class="btn small primary" onclick="openDevoir(${i})">Commencer</button>`:''}
+${d.hasQs&&!d.closed&&!(d.mine&&d.mine.finished)?`<button class="btn small primary" onclick="openDevoir(${i})">Commencer</button>`:''}
 </div>`).join(''):'<p class="muted">Aucun travail pour le moment. Reviens plus tard.</p>'}`}
 
 async function openBrief(i){
   S.dv=S.devoirs[i];
-  try{const r=await api('/api/brief','POST',{code:S.code,qid:S.dv.id});S.briefDoc=r;go('brief')}
+  try{const r=await api('/api/brief','POST',{qid:S.dv.id});S.briefDoc=r;go('brief')}
   catch(e){setErr(e.message)}
 }
 function vBrief(){const b=S.briefDoc;return `
@@ -279,20 +350,19 @@ async function copyPaper(btn){
 
 async function openDevoir(i){
   S.dv=S.devoirs[i];S.briefHtml=null;S.err='';
-  if(S.dv.hasBrief){try{const r=await api('/api/brief','POST',{code:S.code,qid:S.dv.id});S.briefHtml=r.brief}catch(e){}}
+  if(S.dv.hasBrief){try{const r=await api('/api/brief','POST',{qid:S.dv.id});S.briefHtml=r.brief}catch(e){}}
   go('intro');
 }
 
 /* ---------- Élève : nom, règles, début ---------- */
 function vIntro(){const q=S.dv;return `
 <button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
-${mascot(S.err?'oops':'hello',S.err||'Entre ton nom, lis les règles, puis lance-toi !',96,'small')}
+${mascot(S.err?'oops':'hello',S.err||'Lis les règles, puis lance-toi !',96,'small')}
 <h2>${esc(q.title)}</h2>
 <p><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span></p>
 <p>${q.n} question${q.n>1?'s':''}${q.minutes>0?` · ${q.minutes} minute${q.minutes>1?'s':''} au total`:' · pas de limite de temps'}</p>
 ${S.briefHtml?`<button class="btn small primary" onclick="copyPaper(this)" aria-live="polite">Copier le libellé</button><div class="paper" id="pp" style="margin:0 0 16px">${S.briefHtml}</div>`:''}
-<label for="nm">Prénom et nom</label>
-<input type="text" id="nm" autocomplete="name" value="${esc(S.name||'')}">
+<p class="muted">Tu es connecté(e) en tant que <b>${esc(S.stu?S.stu.name:'')}</b>.</p>
 <div class="card" style="margin-top:18px"><h3>Avant de commencer</h3>
 <ul class="rules">
 <li>Une question à la fois. Tu ne peux pas revenir en arrière.</li>
@@ -303,13 +373,11 @@ ${S.briefHtml?`<button class="btn small primary" onclick="copyPaper(this)" aria-
 <button class="btn primary" id="sb" onclick="startRun()" ${S.busy?'disabled':''}>Je suis prêt, commencer</button>`}
 
 async function startRun(){
-  const name=document.getElementById('nm').value.trim().replace(/\s+/g,' ');
-  S.name=name;
-  if(name.length<3){S.err='Entre ton prénom et ton nom.';return render()}
+  if(!S.stu)return go('slogin');
   document.getElementById('sb').disabled=true;
-  const lk='mm_att:'+S.dv.id+':'+name.toLowerCase();
+  const lk='mm_att:'+S.dv.id+':'+S.stu.pseudo;
   try{
-    const r=await api('/api/start','POST',{code:S.code,qid:S.dv.id,name,token:store.get(lk)});
+    const r=await api('/api/start','POST',{qid:S.dv.id,token:store.get(lk)});
     if(r.done)return showDone(r);
     store.set(lk,r.token);S.token_att=r.token;
     beginRun(r.state);
@@ -332,7 +400,7 @@ function tick(){
   if(left<60000&&left>0&&!r.warned){r.warned=true;setMood('wow',"Plus qu'une minute !")}
   if(left<=0&&!r.finishing)timeUp();
 }
-function body(extra){return Object.assign({code:S.code,qid:S.dv&&S.dv.id,name:S.name,token:S.token_att,flags:S.run?S.run.flags:undefined},extra||{})}
+function body(extra){return Object.assign({qid:S.dv&&S.dv.id,token:S.token_att,flags:S.run?S.run.flags:undefined},extra||{})}
 function sendFlags(){if(S.run&&S.view==='take')api('/api/flags','POST',body(),true).catch(()=>{})}
 document.addEventListener('visibilitychange',()=>{
   const r=S.run;if(!r||S.view!=='take')return;
@@ -407,7 +475,7 @@ function showDone(res){
   S.run=null;S.result=res;S.view='done';render();
 }
 async function backToList(){
-  try{const r=await api('/api/login','POST',{code:S.code});S.devoirs=r.devoirs;S.cls=r.class}catch(e){}
+  await loadMe();
   go('devoirs');
 }
 function vDone(){
@@ -422,7 +490,8 @@ ${res.timeUp?'<p class="err">Le temps était écoulé : les réponses non donné
 ${sc.p?`<p class="hint">${sc.p} question${sc.p>1?'s':''} rédigée${sc.p>1?'s':''} à corriger par ton professeur.</p>`:''}</div>
 <p class="muted">Tu peux fermer cette page.</p>
 <button class="btn" onclick="backToList()">Retour aux travaux de ma classe</button>
-<button class="btn" onclick="S.name='';go('home')">Retour à l'accueil</button>`}
+<button class="btn" onclick="openMyNotes()">Mes notes</button>
+<button class="btn" onclick="go('home')">Retour à l'accueil</button>`}
 
 function score(res){
   let s=0,p=0;
@@ -455,17 +524,19 @@ ${c.level?`<p class="muted" style="margin:0 0 8px">${esc(c.level)}</p>`:''}
 <button class="btn" onclick="S.name='';S.view='home';render()">Voir la page des élèves</button>
 <button class="btn" onclick="logout()">Me déconnecter de cet appareil</button>`}
 function logout(){store.del('mm_token');S.token=false;go('home')}
-function newClass(){S.cd={id:'',name:'',level:''};S.err='';S.view='cedit';render()}
-function editClass(id){const c=S.classes.find(x=>x.id===id);S.cd={id:c.id,name:c.name,level:c.level||''};S.err='';S.view='cedit';render()}
+function newClass(){S.cd={id:'',name:'',level:'',periods:'1re étape\n2e étape\n3e étape'};S.err='';S.view='cedit';render()}
+async function editClass(id){try{const r=await api('/api/classes/'+id);const c=r.class;S.cd={id:c.id,name:c.name,level:c.level||'',periods:(c.periods||[]).join('\n')};S.err='';S.view='cedit';render()}catch(e){S.err=e.message;render()}}
 function vCEdit(){const c=S.cd;return `<button class="back" onclick="enterTeacher()">‹ Annuler</button>
 <h2>${c.id?'Renommer la classe':'Nouvelle classe'}</h2>
 <label for="cn">Nom de la classe</label><input type="text" id="cn" placeholder="ex : 8e AF A, NS2, 9e B" value="${esc(c.name)}" oninput="S.cd.name=this.value">
 <label for="cl">Niveau (facultatif)</label><input type="text" id="cl" placeholder="ex : Fondamental 3e cycle" value="${esc(c.level)}" oninput="S.cd.level=this.value">
+<label for="cp">Périodes (une par ligne)</label><textarea id="cp" rows="4" oninput="S.cd.periods=this.value">${esc(c.periods||'')}</textarea>
+<p class="hint">Ex : 1re étape, 2e étape… Chaque travail est rattaché à une période pour le carnet de notes.</p>
 <p class="hint">Un code unique est créé pour la classe. Tes élèves l'entrent sur la page d'accueil pour voir leurs travaux.</p>
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p><button class="btn primary" onclick="saveClass()">Enregistrer</button>`}
 async function saveClass(){
-  try{await api('/api/classes','POST',S.cd);enterTeacher()}catch(e){S.err=e.message;render()}
+  try{await api('/api/classes','POST',Object.assign({},S.cd,{periods:String(S.cd.periods||'').split('\n').map(x=>x.trim()).filter(Boolean)}));enterTeacher()}catch(e){S.err=e.message;render()}
 }
 async function delClass(id){
   if(!confirm('Supprimer cette classe, tous ses travaux et toutes les copies ?'))return;
@@ -483,13 +554,15 @@ function vTClass(){
   return `<button class="back" onclick="enterTeacher()">‹ Mes classes</button>
 <h2>${esc(c.name)}</h2>
 <p style="margin:0 0 4px">Code de la classe : <span class="code">${esc(c.id)}</span></p>
-<p class="hint" style="margin:0 0 16px">Donne ce code à tes élèves : il ouvre la liste de leurs travaux.</p>
+<p class="hint" style="margin:0 0 16px">Donne ce code à tes élèves : ils créent leur compte avec, puis voient leurs travaux.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
+<button class="btn primary" onclick="openCarnet('${esc(c.id)}')">Carnet de notes</button>
+<button class="btn" onclick="openStuds('${esc(c.id)}')">Élèves inscrits</button>
 <button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
 ${L.length?L.map(q=>`<div class="card">
 <h3>${esc(q.title)}</h3>
-<p style="margin:0 0 8px">${q.draft?'<span class="tag warn">Brouillon : invisible pour les élèves</span>':''}<span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}</p>
+<p style="margin:0 0 8px">${q.draft?'<span class="tag warn">Brouillon : invisible pour les élèves</span>':''}<span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}${q.period?`<span class="tag">${esc(q.period)}</span>`:''}${q.coef&&q.coef!==1?`<span class="tag">coef ${fmtS(q.coef)}</span>`:''}</p>
 <p class="hint" style="margin:0 0 12px">${q.qs.length} question${q.qs.length>1?'s':''} · ${q.n} copie${q.n>1?'s':''}</p>
 ${q.qs.length?`<button class="btn small primary" onclick="openRes('${esc(q.id)}')">Résultats</button>`:''}
 ${q.draft?`<button class="btn small primary" onclick="publishQuiz('${esc(q.id)}')">Publier</button>`:''}<button class="btn small" onclick="editQuiz('${esc(q.id)}')">${q.draft?'Relire et modifier':'Modifier'}</button>
@@ -503,6 +576,71 @@ async function publishQuiz(id){
 async function delQuiz(id){
   if(!confirm('Supprimer ce travail et toutes ses copies ?'))return;
   try{await api('/api/quizzes/'+id,'DELETE');openClass(S.tc.class.id)}catch(e){S.err=e.message;render()}
+}
+
+
+/* ---------- Professeur : carnet de notes ---------- */
+async function openCarnet(id,period,zero){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{
+    const q='?period='+encodeURIComponent(period||'')+'&zero='+(zero?1:0);
+    S.cn=await api('/api/classes/'+id+'/carnet'+q);S.err='';S.view='carnet';render();
+  }catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function vCarnet(){
+  const t=S.cn,Q=t.quizzes;
+  const col=v=>v===null||v===undefined?'':v<5?'bad':'';
+  return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
+<h2>Carnet de notes · ${esc(t.class.name)}</h2>
+<label for="cpf">Période</label>
+<select id="cpf" onchange="openCarnet('${esc(t.class.id)}',this.value,${t.zero})"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+<label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input type="checkbox" style="width:auto" ${t.zero?'checked':''} onchange="openCarnet('${esc(t.class.id)}',document.getElementById('cpf').value,this.checked)"> Compter les travaux non faits comme 0</label>
+<div class="card">
+<p style="margin:0">${t.students.length} élève${t.students.length>1?'s':''} · ${Q.length} travail${Q.length>1?'ux':''} noté${Q.length>1?'s':''}</p>
+<p style="margin:4px 0 0">Moyenne de la classe : <b>${fmtS(t.classAvg)} / 10</b></p>
+<p class="hint" style="margin:6px 0 0">Moyenne ramenée sur 10, pondérée par les coefficients. « * » = des questions rédigées restent à corriger.</p>
+</div>
+${t.students.length?`<div style="overflow-x:auto;margin:0 0 14px"><table class="grid"><thead><tr><th>#</th><th>Élève</th>${Q.map(q=>`<th title="${esc(q.title)}">${esc(q.title.length>14?q.title.slice(0,13)+'…':q.title)}${q.coef!==1?`<br><small>×${fmtS(q.coef)}</small>`:''}</th>`).join('')}<th>Moy. /10</th></tr></thead><tbody>
+${t.students.map(s=>`<tr onclick="openSProg('${esc(t.class.id)}','${esc(s.sid)}')" style="cursor:pointer"><td>${s.rank||''}</td><td class="nm">${esc(s.name)}${s.legacy?' <small class="muted">(sans compte)</small>':''}</td>${Q.map(q=>{const c=s.scores[q.id];return `<td class="${col(c&&c.score10)}">${c?(c.inProgress?'…':fmtS(c.score10)+(c.pending?'*':'')):''}</td>`}).join('')}<td><b class="${col(s.avg10)}">${fmtS(s.avg10)}${s.provisional?'*':''}</b></td></tr>`).join('')}
+</tbody></table></div><p class="hint">Touche une ligne pour voir la progression de l'élève.</p>`:'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
+async function openSProg(cid,sid){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{S.sp=await api('/api/classes/'+cid+'/students/'+encodeURIComponent(sid)+'/history');S.sp.cid=cid;S.view='sprog';render()}
+  catch(e){S.err=e.message;S.view='carnet';render()}
+}
+function vSProg(){
+  const t=S.sp;
+  return `<button class="back" onclick="S.view='carnet';render()">‹ Retour au carnet</button>
+<h2>${esc(t.name)}</h2>
+<div class="card"><p style="margin:0">Moyenne générale : <b>${fmtS(t.avg10)} / 10</b></p>${chart(t.history)}
+${t.byPeriod.filter(b=>b.n).map(b=>`<p style="margin:4px 0 0"><span class="tag">${esc(b.period)}</span> ${fmtS(b.avg10)} / 10 <span class="muted">· ${b.n} travail${b.n>1?'ux':''}</span></p>`).join('')}</div>
+<div class="card">${histList(t.history)}</div>`}
+
+/* ---------- Professeur : élèves inscrits ---------- */
+async function openStuds(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{const r=await api('/api/classes/'+id+'/students');S.sl={cid:id,list:r.students,pw:null};S.err='';S.view='studs';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function vStuds(){
+  const t=S.sl;
+  return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
+<h2>Élèves inscrits</h2>
+<p class="hint">Un élève qui a oublié son mot de passe : réinitialise-le et donne-lui le nouveau. Supprime un compte en double.</p>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t.pw.name)}</b> : <span class="code">${esc(t.pw.pw)}</span></p></div>`:''}
+${t.list.length?t.list.map((s,i)=>`<div class="card"><h3>${esc(s.name)}</h3><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}</p>
+<button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
+<button class="btn small danger" onclick="delStu(${i})">Supprimer</button></div>`).join(''):'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
+async function resetStu(i){
+  const s=S.sl.list[i];
+  if(!confirm('Réinitialiser le mot de passe de '+s.name+' ?'))return;
+  try{const r=await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo)+'/reset','POST');S.sl.pw={name:s.name,pw:r.password};S.err='';render()}catch(e){S.err=e.message;render()}
+}
+async function delStu(i){
+  const s=S.sl.list[i];
+  if(!confirm('Supprimer le compte de '+s.name+' ? Ses copies déjà rendues restent visibles dans les résultats.'))return;
+  try{await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo),'DELETE');openStuds(S.sl.cid)}catch(e){S.err=e.message;render()}
 }
 
 /* ---------- Professeur : statistiques de la classe ---------- */
@@ -533,8 +671,8 @@ ${t.per.length?'':'<p class="muted">Aucun quiz dans cette classe pour le moment.
 
 /* ---------- Professeur : éditeur ---------- */
 function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
-function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',draft:false,qs:[blankQ('qcm')]};S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}
-async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
+function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',draft:false,qs:[blankQ('qcm')],period:'',coef:1};S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}
+async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.d.coef=S.d.coef||1;S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
 function setMode(m){S.d.mode=m;if(m!=='libelle'&&!S.d.qs.length)S.d.qs=[blankQ('qcm')];if(m==='devoir'&&S.d.minutes===15)S.d.minutes=0;render()}
 function vEditor(){
   const d=S.d,lib=d.mode==='libelle';
@@ -544,7 +682,9 @@ ${mascot('hello','Écris tes questions, je m\'occupe du reste !',84,'small')}
 <label for="f1">Titre</label><input type="text" id="f1" value="${esc(d.title)}" oninput="S.d.title=this.value">
 <label for="f4">Type</label><select id="f4" onchange="setMode(this.value)"><option value="quiz" ${d.mode==='quiz'?'selected':''}>Quiz (en classe, chronométré)</option><option value="devoir" ${d.mode==='devoir'?'selected':''}>Devoir (à la maison)</option><option value="libelle" ${lib?'selected':''}>Libellé seul (consigne sans quiz)</option></select>
 <label for="f2">Matière</label><select id="f2" onchange="S.d.subject=this.value">${SUBJECTS.map(s=>`<option ${s===d.subject?'selected':''}>${esc(s)}</option>`).join('')}</select>
-${lib?'':`<label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">`}
+${lib?'':`<label for="f8">Période (pour le carnet de notes)</label><select id="f8" onchange="S.d.period=this.value"><option value="">— Aucune —</option>${((S.tc&&S.tc.class&&S.tc.class.periods)||[]).map(x=>`<option ${x===d.period?'selected':''}>${esc(x)}</option>`).join('')}</select>
+<label for="f9">Coefficient</label><select id="f9" onchange="S.d.coef=+this.value">${[0.5,1,1.5,2,3,4,5].map(x=>`<option value="${x}" ${x===d.coef?'selected':''}>${fmtS(x)}</option>`).join('')}</select>
+<label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">`}
 <label for="f6">Date limite (facultatif)</label><input type="date" id="f6" value="${esc(d.deadline)}" oninput="S.d.deadline=this.value">
 ${lib?'':`<label for="f7">Questions tirées au hasard par élève (0 = toutes)</label><input type="number" id="f7" min="0" value="${d.draw}" oninput="S.d.draw=Math.max(0,+this.value||0)">
 <p class="hint">Astuce : écris 20 questions et fais-en tirer 10. Chaque élève reçoit un quiz différent, dans un ordre différent.</p>`}
