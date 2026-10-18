@@ -575,7 +575,7 @@ function vAI(){
   const a=S.ai||(S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false});
   const T=[['qcm','Choix multiple'],['vf','Vrai ou faux'],['court','Réponse courte'],['long','Réponse rédigée']];
   return `<div class="ai"><h3 style="margin:0 0 4px">Générer les questions avec l'IA</h3>
-<p class="hint" style="margin:0 0 8px">Colle ton résumé de cours, ou écris juste le titre de la leçon. Les questions arrivent en brouillon : tu les relis avant de publier.</p>
+<p class="hint" style="margin:0 0 8px">Colle ton résumé de cours, ou écris juste le titre de la leçon. Les questions arrivent en brouillon : tu les relis avant de publier. La génération peut prendre une vingtaine de secondes.</p>
 <label for="aitxt" style="margin-top:6px">Cours ou leçon</label>
 <textarea id="aitxt" oninput="S.ai.text=this.value">${esc(a.text)}</textarea>
 <label for="aicnt">Nombre de questions (1 à 20)</label>
@@ -584,12 +584,13 @@ ${T.map(t=>`<label class="check"><input type="checkbox" ${a.types.includes(t[0])
 <p></p>
 <button class="btn primary" id="aibtn" onclick="aiGo()" ${a.busy?'disabled':''}>${a.busy?'Génération en cours…':'Générer le brouillon'}</button>
 <p class="${a.ok?'good':'err'}" role="status" id="aimsg" style="margin:6px 0 0">${esc(a.msg)}</p></div>`}
+function keepAi(){const el=document.getElementById('aibtn');if(el&&el.scrollIntoView)el.scrollIntoView({block:'center'})}
 function aiType(t,on){const a=S.ai;a.types=on?[...new Set([...a.types,t])]:a.types.filter(x=>x!==t)}
 async function aiGo(){
   const a=S.ai,d=S.d;
   if(!a.types.length){a.msg='Choisis au moins un type de question.';a.ok=false;return render()}
   if(a.text.trim().length<8){a.msg='Colle ton cours ou écris le titre de la leçon.';a.ok=false;return render()}
-  a.busy=true;a.msg='';render();
+  a.busy=true;a.msg='';render();keepAi();
   try{
     const r=await api('/api/generate','POST',{text:a.text,count:a.count,types:a.types,subject:d.subject,mode:d.mode,level:(S.tc&&S.tc.class&&S.tc.class.name)||''});
     r.qs.forEach(q=>q.ai=true);
@@ -598,8 +599,8 @@ async function aiGo(){
     d.draft=true;
     a.busy=false;a.ok=true;a.msg=r.qs.length+' question'+(r.qs.length>1?'s':'')+' ajoutée'+(r.qs.length>1?'s':'')+' en brouillon. Relis chacune avant de publier.'+(r.qs.length<r.asked?' (L\'IA en a produit moins que demandé.)':'');
     render();
-    const f=document.querySelector('.card .aitag');if(f)f.scrollIntoView({block:'center'});
-  }catch(e){a.busy=false;a.ok=false;a.msg=e.message;render()}
+    const f=document.querySelector('.card .aitag');if(f)f.scrollIntoView({block:'center'});else keepAi();
+  }catch(e){a.busy=false;a.ok=false;a.msg=e.message;render();keepAi()}
 }
 function fmt(c,v){
   const el=document.getElementById('brief');el.focus();

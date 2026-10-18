@@ -501,7 +501,12 @@ function cleanGenerated(arr, types, count) {
     if (!t || !text) continue;
     if (t === 'qcm') {
       const opts = (Array.isArray(q.opts) ? q.opts : []).slice(0, 4).map(o => str(o, 300).trim());
-      const a = Number.isInteger(q.a) ? q.a : parseInt(q.a);
+      let a = Number.isInteger(q.a) ? q.a : parseInt(q.a);
+      if (!(a >= 0)) {
+        const L = /^\s*([A-Da-d])\s*[).:]?\s*$/.exec(String(q.a));
+        if (L) a = L[1].toUpperCase().charCodeAt(0) - 65;
+        else { const k = opts.findIndex(o => norm(o) === norm(q.a)); if (k >= 0) a = k; }
+      }
       if (opts.length < 2 || opts.some(o => !o) || !(a >= 0 && a < opts.length)) continue;
       const order = shuffle(opts.map((o, i) => i));
       out.push({ t, q: text, opts: order.map(i => opts[i]).concat(['', '', '', '']).slice(0, 4), a: order.indexOf(a), why: false });
@@ -516,29 +521,64 @@ function cleanGenerated(arr, types, count) {
   }
   return out;
 }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let modelCache = { at: 0, list: [] };
+function modelScore(name) {
+  const v = /gemini-(\d+(?:\.\d+)?)/.exec(name);
+  const ver = v ? parseFloat(v[1]) : 0;
+  return (/preview|exp/.test(name) ? 0 : 100) + ver * 10 + (/lite/.test(name) ? -5 : 0);
+}
+async function listModels(key) {
+  if (modelCache.list.length && Date.now() - modelCache.at < 3600e3) return modelCache.list;
+  const r = await fetch(GEMINI_BASE + '/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key }, signal: AbortSignal.timeout(15000) });
+  if (r.status === 400 || r.status === 401 || r.status === 403) { const e = new Error('key'); e.code = 'key'; console.error('Gemini liste', r.status, (await r.text()).slice(0, 200)); throw e; }
+  if (!r.ok) { console.error('Gemini liste', r.status); return []; }
+  const j = await r.json();
+  const list = (j.models || [])
+    .filter(m => (m.supportedGenerationMethods || []).includes('generateContent') && /gemini-.*flash/.test(m.name) && !/image|tts|live|audio|embedding|vision|robotics|computer|learnlm|gemma/.test(m.name))
+    .map(m => m.name.replace(/^models\//, ''))
+    .sort((x, y) => modelScore(y) - modelScore(x));
+  if (list.length) modelCache = { at: Date.now(), list };
+  console.log('Modèles Gemini disponibles :', list.slice(0, 6).join(', '));
+  return list;
+}
 async function callGemini(prompt) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) { const e = new Error('no-key'); e.code = 'no-key'; throw e; }
-  let last;
-  for (const model of GEMINI_MODELS) {
-    try {
-      const r = await fetch(GEMINI_BASE + '/v1beta/models/' + model + ':generateContent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, responseMimeType: 'application/json' } }),
-        signal: AbortSignal.timeout(50000),
-      });
-      if (r.status === 429) { const e = new Error('quota'); e.code = 'quota'; throw e; }
-      if (r.status === 400 || r.status === 403) { const b = await r.text(); console.error('Gemini', r.status, b.slice(0, 300)); const e = new Error('key'); e.code = 'key'; last = e; if (r.status === 403) throw e; continue; }
-      if (r.status === 404) { last = new Error('model'); continue; }
-      if (!r.ok) { console.error('Gemini', r.status); last = new Error('http'); continue; }
-      const j = await r.json();
-      const txt = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts ? j.candidates[0].content.parts.map(p => p.text || '').join('') : '';
-      if (!txt) { last = new Error('empty'); continue; }
-      return txt;
-    } catch (e) { if (e.code === 'quota' || e.code === 'key') throw e; last = e; }
+  let models = [];
+  try { models = await listModels(key); } catch (e) { if (e.code === 'key') throw e; }
+  const cands = [...new Set([process.env.GEMINI_MODEL, ...models.slice(0, 4), models.length ? null : 'gemini-flash-latest'].filter(Boolean))];
+  let sawQuota = false, sawBusy = false, saw404 = false, lastErr;
+  for (const model of cands) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(GEMINI_BASE + '/v1beta/models/' + model + ':generateContent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, responseMimeType: 'application/json', maxOutputTokens: 8192 } }),
+          signal: AbortSignal.timeout(45000),
+        });
+        if (r.ok) {
+          const j = await r.json();
+          const parts = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts;
+          const txt = parts ? parts.map(p => p.text || '').join('') : '';
+          if (txt) { console.log('Génération réussie avec', model); return txt; }
+          lastErr = new Error('empty'); break;
+        }
+        const body = (await r.text()).slice(0, 300);
+        console.error('Gemini', model, r.status, body);
+        if (r.status === 429) { sawQuota = true; break; }
+        if (r.status === 500 || r.status === 503 || r.status === 504) { sawBusy = true; if (attempt === 0) { await sleep(1500); continue; } break; }
+        if (r.status === 404) { saw404 = true; break; }
+        if (r.status === 401 || r.status === 403 || /API key/i.test(body)) { const e = new Error('key'); e.code = 'key'; throw e; }
+        lastErr = new Error('http ' + r.status); break;
+      } catch (e) { if (e.code === 'key') throw e; lastErr = e; if (e.name === 'TimeoutError') { sawBusy = true; } break; }
+    }
   }
-  throw last || new Error('fail');
+  const e = new Error(sawQuota && !sawBusy ? 'quota' : 'fail');
+  e.code = sawQuota && !sawBusy ? 'quota' : sawBusy ? 'busy' : saw404 ? 'nomodel' : 'fail';
+  if (lastErr) e.detail = lastErr.message;
+  throw e;
 }
 function parseJsonLoose(txt) {
   let t = String(txt).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
@@ -563,7 +603,9 @@ app.post('/api/generate', auth, wrap(async (req, res) => {
     if (e.code === 'no-key') return fail(res, 503, 'La clé de l\'IA n\'est pas configurée dans Render (GEMINI_API_KEY).');
     if (e.code === 'quota') return fail(res, 429, 'Le quota gratuit du jour est épuisé. Réessaie demain ou écris les questions toi-même.');
     if (e.code === 'key') return fail(res, 502, 'La clé de l\'IA est refusée. Vérifie GEMINI_API_KEY dans Render.');
-    console.error('Génération échouée', e.message);
+    if (e.code === 'busy') return fail(res, 503, 'Les serveurs de Google sont surchargés en ce moment. Réessaie dans une minute.');
+    if (e.code === 'nomodel') return fail(res, 502, 'Aucun modèle Gemini n\'est disponible avec cette clé.');
+    console.error('Génération échouée', e.message, e.detail || '');
     return fail(res, 502, 'L\'IA ne répond pas pour le moment. Réessaie dans un instant.');
   }
   const qs = cleanGenerated(parseJsonLoose(raw), types, count);
