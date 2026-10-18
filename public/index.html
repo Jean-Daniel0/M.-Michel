@@ -87,7 +87,7 @@ body.white .paper{padding:4px 0;border-radius:0}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.opt:focus-visible,#hd button:focus-visible,.back:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 label{display:block;font-weight:600;margin:14px 0 4px}
-input[type=text],input[type=password],input[type=number],input[type=date],select,textarea{width:100%;min-height:46px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
+input[type=text],input[type=password],input[type=number],input[type=date],input[type=time],select,textarea{width:100%;min-height:46px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit}
 textarea{min-height:96px;resize:vertical}
 .grid{border-collapse:collapse;font-size:.9rem;width:100%}.grid th,.grid td{border:1px solid var(--line);padding:6px 8px;text-align:center;white-space:nowrap}.grid th{background:var(--soft);color:var(--blue)}.grid td.nm{text-align:left}.grid small{font-weight:400}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 14px}
@@ -146,7 +146,7 @@ ul.rules li{margin:.4em 0}
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
-const SAUTH=['/api/student/me','/api/student/history','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
+const SAUTH=['/api/student/me','/api/student/profile','/api/chat','/api/student/history','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
 async function api(path,method,body,keepalive){
   const h={'Content-Type':'application/json'};
   const tk=store.get('mm_token');
@@ -180,7 +180,8 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
 function render(){
-  const v={studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  const v={profile:vProfile,chat:vChat,tchat:vTChat,studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  if(S.view!=='chat')stopChat();
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
   document.getElementById('tb').style.display=S.view==='home'?'block':'none';
@@ -284,7 +285,120 @@ async function stuGo(){
     go('devoirs');
   }catch(e){setErr(e.message)}
 }
-function stuLogout(){store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
+function stuLogout(){stopChat();store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
+
+/* ---------- Avatars et photos de profil ---------- */
+const AV=['🦁','🐯','🐼','🦊','🐸','🐧','🦄','🐙','🚀','⚽','🎨','💻'];
+const AVC=['#fde2e4','#fff1c9','#dff3e4','#d8e8ff','#ead9ff','#ffe0cc'];
+function avatarH(p,size){
+  size=size||40;const st=`width:${size}px;height:${size}px;border-radius:50%;flex:none;`;
+  if(p&&p.photo)return `<img src="${esc(p.photo)}" alt="" style="${st}object-fit:cover">`;
+  if(p&&p.avatar!==null&&p.avatar!==undefined&&AV[p.avatar])return `<span style="${st}background:${AVC[p.avatar%AVC.length]};display:inline-flex;align-items:center;justify-content:center;font-size:${Math.round(size*.55)}px" aria-hidden="true">${AV[p.avatar]}</span>`;
+  const ini=((p&&p.name)||'?').trim().split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase();
+  return `<span style="${st}background:var(--soft);color:var(--blue);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:${Math.round(size*.4)}px" aria-hidden="true">${esc(ini)}</span>`;
+}
+function vProfile(){
+  const u=S.stu;
+  return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
+<h2>Mon profil</h2>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<div class="card" style="text-align:center">${avatarH(u,96)}<p style="margin:8px 0 0"><b>${esc(u.name)}</b></p></div>
+<div class="card"><h3>Choisir un avatar</h3>
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${AV.map((e,i)=>`<button type="button" aria-label="Avatar ${i+1}" onclick="setAvatar(${i})" style="border:2px solid ${u.avatar===i&&!u.photo?'var(--blue)':'transparent'};background:none;padding:2px;border-radius:50%;cursor:pointer">${avatarH({avatar:i},44)}</button>`).join('')}</div></div>
+<div class="card"><h3>Ou ma photo</h3>
+<p class="hint" style="margin:0 0 8px">Ta photo est réduite automatiquement (très peu de données). Choisis une photo correcte : ton professeur peut la supprimer.</p>
+<input type="file" id="pf" accept="image/*" onchange="pickPhoto(this)">
+</div>
+<button class="btn" onclick="clearProfile()">Retirer mon avatar / ma photo</button>`}
+async function saveProfile(b){
+  try{const r=await api('/api/student/profile','PUT',b);Object.assign(S.stu,{avatar:r.profile.avatar,photo:r.profile.photo,pv:r.profile.pv});S.prof=S.prof||{};delete S.prof[S.stu.pseudo];S.err='';render()}
+  catch(e){S.err=e.message;render()}
+}
+function setAvatar(i){saveProfile({avatar:i})}
+function clearProfile(){saveProfile({clear:true})}
+function pickPhoto(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=()=>{
+    const n=128,c=document.createElement('canvas');c.width=c.height=n;
+    const m=Math.min(img.width,img.height),x=(img.width-m)/2,y=(img.height-m)/2;
+    c.getContext('2d').drawImage(img,x,y,m,m,0,0,n,n);URL.revokeObjectURL(url);
+    let d=c.toDataURL('image/jpeg',.7);
+    if(d.length>28000)d=c.toDataURL('image/jpeg',.4);
+    saveProfile({photo:d});
+  };
+  img.onerror=()=>{S.err="Cette image n'a pas pu être lue.";render()};
+  img.src=url;
+}
+
+/* ---------- Chat de classe (élève) ---------- */
+function stopChat(){if(S.ch&&S.ch.timer){clearInterval(S.ch.timer);S.ch.timer=null}}
+function openChat(){
+  S.ch={msgs:[],since:0,open:true,reason:'',timer:null,busy:false};S.err='';S.prof=S.prof||{};
+  S.view='chat';render();pollChat();
+  S.ch.timer=setInterval(()=>{if(!document.hidden)pollChat()},6000);
+}
+async function pollChat(){
+  const c=S.ch;if(!c||S.view!=='chat')return;
+  try{
+    const r=await api('/api/chat?since='+c.since);
+    c.open=r.open;c.reason=r.reason||'';
+    if(r.messages.length){
+      const have=new Set(c.msgs.map(m=>m.id));
+      r.messages.forEach(m=>{if(!have.has(m.id))c.msgs.push(m);c.since=Math.max(c.since,m.ts)});
+      c.msgs=c.msgs.slice(-100);
+    }
+    c.err='';
+    // masquer les messages supprimés : si le serveur n'en a plus, on resynchronise régulièrement
+    if(!c.sync||Date.now()-c.sync>30000){c.sync=Date.now();const f=await api('/api/chat?since=0');c.msgs=f.messages;c.since=f.messages.reduce((a,m)=>Math.max(a,m.ts),0)}
+    paintChat(true);loadProfiles();
+  }catch(e){c.err=e.message;paintChat(false)}
+}
+async function loadProfiles(){
+  const c=S.ch;if(!c)return;
+  const need=[...new Set(c.msgs.filter(m=>{const p=S.prof[m.pk];return !p||Date.now()-(p.at||0)>300000}).map(m=>m.pk))].slice(0,6);
+  for(const pk of need){
+    S.prof[pk]={pv:-1,name:'',at:Date.now()};
+    try{const r=await api('/api/student/profile/'+encodeURIComponent(pk));S.prof[pk]=Object.assign({at:Date.now()},r.profile)}catch(e){S.prof[pk]={pv:0,name:'',at:Date.now()}}
+  }
+  if(need.length)paintChat(false);
+}
+function vChat(){
+  const c=S.ch;
+  return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
+<h2>Chat · ${esc(S.cls.name)}</h2>
+<p class="hint" style="margin:0 0 8px">Sois respectueux. Ton professeur peut lire et supprimer les messages. Touche « Signaler » en cas de problème.</p>
+<div id="chmsgs" class="card" style="max-height:55vh;overflow-y:auto;min-height:120px"></div>
+<p id="chinfo" class="err" role="status" style="display:none"></p>
+<div id="chform" style="display:flex;gap:8px"><input type="text" id="chtxt" maxlength="300" placeholder="Écris un message…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" onclick="sendChat()" style="width:auto;flex:none">Envoyer</button></div>
+<p class="hint" id="chnote"></p>`}
+function paintChat(stick){
+  const c=S.ch;if(!c||S.view!=='chat')return;
+  const box=document.getElementById('chmsgs');if(!box)return;
+  const near=box.scrollHeight-box.scrollTop-box.clientHeight<80;
+  box.innerHTML=c.msgs.length?c.msgs.map(m=>{const p=S.prof[m.pk]||{name:m.name};return `<div style="display:flex;gap:8px;margin:0 0 12px;${m.mine?'flex-direction:row-reverse':''}">${avatarH(Object.assign({},p,{name:m.name}),34)}<div style="max-width:78%;background:${m.mine?'var(--soft)':'#f1f3f9'};border-radius:12px;padding:6px 10px"><b style="font-size:.82rem">${esc(m.name)}</b><div style="white-space:pre-wrap;word-break:break-word">${esc(m.text)}</div><small class="muted">${new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${m.mine?'':` · ${m.reported?'Signalé ✓':`<a href="#" onclick="reportMsg('${esc(m.id)}');return false">Signaler</a>`}`}</small></div></div>`}).join(''):'<p class="muted" style="margin:0">Aucun message pour le moment. Dis bonjour !</p>';
+  if(stick||near)box.scrollTop=box.scrollHeight;
+  const inf=document.getElementById('chinfo');
+  const msg=c.err||(!c.open?c.reason:'');
+  inf.style.display=msg?'block':'none';inf.textContent=msg;
+  const t=document.getElementById('chtxt'),b=document.getElementById('chbtn');
+  if(t)t.disabled=!c.open;if(b)b.disabled=!c.open||c.busy;
+}
+async function sendChat(){
+  const c=S.ch,t=document.getElementById('chtxt');if(!c||!t)return;
+  const text=t.value.trim();if(!text)return;
+  c.busy=true;paintChat(false);
+  try{
+    const r=await api('/api/chat','POST',{text});
+    c.msgs.push(r.message);c.since=Math.max(c.since,r.message.ts);t.value='';c.err='';
+  }catch(e){c.err=e.message}
+  c.busy=false;paintChat(true);t.focus();
+}
+async function reportMsg(id){
+  if(!confirm('Signaler ce message à ton professeur ?'))return;
+  try{await api('/api/chat/report','POST',{id});const m=S.ch.msgs.find(x=>x.id===id);if(m)m.reported=true;paintChat(false)}catch(e){S.ch.err=e.message;paintChat(false)}
+}
+
 const fmtS=v=>v===null||v===undefined?'—':String(v).replace('.',',');
 async function openMyNotes(){
   app().innerHTML='<p class="muted">Chargement…</p>';
@@ -317,7 +431,7 @@ function vDevoirs(){
   const L=S.devoirs;
   return `<button class="back" onclick="go('home')">‹ Changer de code</button>
 ${mascot(S.err?'oops':'hello',S.err||('Bonjour '+(S.stu?S.stu.name.split(' ')[0]:'')+' ! Voici les travaux de ta classe.'),96,'small')}
-<p style="margin:0 0 12px"><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small" onclick="stuLogout()">Me déconnecter</button></p>
+<p style="margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" onclick="go('profile')" aria-label="Mon profil" style="border:0;background:none;padding:0;cursor:pointer">${avatarH(S.stu,44)}</button><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small primary" onclick="openChat()">Chat</button><button class="btn small" onclick="stuLogout()">Me déconnecter</button></p>
 <h2>${esc(S.cls.name)}</h2>
 ${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
 ${L.length?L.map((d,i)=>`<div class="card">
@@ -559,6 +673,7 @@ ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
 <button class="btn primary" onclick="openCarnet('${esc(c.id)}')">Carnet de notes</button>
 <button class="btn" onclick="openStuds('${esc(c.id)}')">Élèves inscrits</button>
+<button class="btn" onclick="openTChat('${esc(c.id)}')">Chat de la classe</button>
 <button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
 ${L.length?L.map(q=>`<div class="card">
 <h3>${esc(q.title)}</h3>
@@ -616,6 +731,37 @@ function vSProg(){
 ${t.byPeriod.filter(b=>b.n).map(b=>`<p style="margin:4px 0 0"><span class="tag">${esc(b.period)}</span> ${fmtS(b.avg10)} / 10 <span class="muted">· ${b.n} travail${b.n>1?'ux':''}</span></p>`).join('')}</div>
 <div class="card">${histList(t.history)}</div>`}
 
+/* ---------- Professeur : chat de la classe ---------- */
+async function openTChat(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{const r=await api('/api/classes/'+id+'/chat');S.tch=Object.assign(r,{cid:id});S.err='';S.view='tchat';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function vTChat(){
+  const t=S.tch,cs=t.settings;
+  const flagged=t.messages.filter(m=>m.reports>0);
+  return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
+<h2>Chat de la classe</h2>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<div class="card"><h3>Réglages</h3>
+<label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="cton" style="width:auto" ${cs.on?'checked':''}> Chat ouvert</label>
+<p class="hint" style="margin:10px 0 0">Heures d'ouverture (heure d'Haïti, maintenant ${esc(t.now)}). Laisse vide pour toute la journée.</p>
+<div style="display:flex;gap:10px"><div style="flex:1"><label for="ctf">De</label><input type="time" id="ctf" value="${esc(cs.from)}"></div><div style="flex:1"><label for="ctt">À</label><input type="time" id="ctt" value="${esc(cs.to)}"></div></div>
+<p></p><button class="btn small primary" onclick="saveTChat()">Enregistrer</button>
+<p class="hint" style="margin:8px 0 0">Le chat est toujours bloqué pour un élève pendant qu'il passe un quiz.</p></div>
+${flagged.length?`<div class="card"><h3>Messages signalés</h3>${flagged.map(m=>tMsg(m)).join('')}</div>`:''}
+<div class="card"><h3>Tous les messages</h3>${t.messages.length?t.messages.slice().reverse().map(m=>tMsg(m)).join(''):'<p class="muted" style="margin:0">Aucun message.</p>'}</div>`}
+function tMsg(m){return `<div class="ans" style="margin-top:8px;padding-top:8px"><b>${esc(m.name)}</b> <small class="muted">${new Date(m.ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small>${m.reports?` <span class="tag warn">${m.reports} signalement${m.reports>1?'s':''}</span>`:''}<div style="white-space:pre-wrap;word-break:break-word">${esc(m.text)}</div><button class="btn small danger" onclick="delMsg('${esc(m.id)}')">Supprimer</button></div>`}
+async function saveTChat(){
+  const g=id=>document.getElementById(id).value;
+  try{await api('/api/classes/'+S.tch.cid+'/chat/settings','POST',{on:document.getElementById('cton').checked,from:g('ctf'),to:g('ctt')});openTChat(S.tch.cid)}
+  catch(e){S.err=e.message;render()}
+}
+async function delMsg(id){
+  if(!confirm('Supprimer ce message ?'))return;
+  try{await api('/api/classes/'+S.tch.cid+'/chat/'+id,'DELETE');openTChat(S.tch.cid)}catch(e){S.err=e.message;render()}
+}
+
 /* ---------- Professeur : élèves inscrits ---------- */
 async function openStuds(id){
   app().innerHTML='<p class="muted">Chargement…</p>';
@@ -629,9 +775,19 @@ function vStuds(){
 <p class="hint">Un élève qui a oublié son mot de passe : réinitialise-le et donne-lui le nouveau. Supprime un compte en double.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 ${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t.pw.name)}</b> : <span class="code">${esc(t.pw.pw)}</span></p></div>`:''}
-${t.list.length?t.list.map((s,i)=>`<div class="card"><h3>${esc(s.name)}</h3><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}</p>
+${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;gap:10px;align-items:center;margin:0 0 6px">${avatarH(s,44)}<h3 style="margin:0">${esc(s.name)}</h3></div><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}${s.muted?' · <b class="bad">chat coupé</b>':''}</p>
+<button class="btn small" onclick="muteStu(${i})">${s.muted?'Rétablir son chat':'Couper son chat'}</button>
+${s.photo||s.avatar!==null?`<button class="btn small" onclick="delPhoto(${i})">Retirer sa photo/avatar</button>`:''}
 <button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
 <button class="btn small danger" onclick="delStu(${i})">Supprimer</button></div>`).join(''):'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
+async function muteStu(i){
+  const s=S.sl.list[i];
+  try{await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo)+'/mute','POST',{muted:!s.muted});openStuds(S.sl.cid)}catch(e){S.err=e.message;render()}
+}
+async function delPhoto(i){
+  const s=S.sl.list[i];
+  try{await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo)+'/photo/delete','POST');openStuds(S.sl.cid)}catch(e){S.err=e.message;render()}
+}
 async function resetStu(i){
   const s=S.sl.list[i];
   if(!confirm('Réinitialiser le mot de passe de '+s.name+' ?'))return;

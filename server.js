@@ -242,7 +242,7 @@ async function sauth(req, res, next) {
     if (!p || p.r !== 's') return fail(res, 401, 'Connecte-toi pour continuer.');
     const rec = await kv.get(stuKey(p.c, p.u));
     if (!rec) return fail(res, 401, 'Compte introuvable. Connecte-toi de nouveau.');
-    req.st = { cid: p.c, pk: p.u, sid: 'u_' + p.u, name: rec.name, pseudo: rec.pseudo };
+    req.st = { cid: p.c, pk: p.u, sid: 'u_' + p.u, name: rec.name, pseudo: rec.pseudo, rec };
     next();
   } catch (e) { console.error(e); fail(res, 500, 'Erreur du serveur. Réessaie.'); }
 }
@@ -322,11 +322,149 @@ app.get('/api/student/me', sauth, wrap(async (req, res) => {
     }
     devoirs.push(info);
   }
-  res.json({ class: { name: cls.name, level: cls.level || '' }, student: { name: req.st.name, pseudo: req.st.pseudo }, devoirs });
+  res.json({ class: { name: cls.name, level: cls.level || '' }, student: { name: req.st.name, pseudo: req.st.pseudo, avatar: profileOf(req.st.rec).avatar, photo: req.st.rec.photo || '', pv: req.st.rec.pv || 0 }, devoirs });
 }));
 app.get('/api/student/history', sauth, wrap(async (req, res) => {
   const h = await studentHistory(req.st.cid, req.st.sid);
   res.json({ name: req.st.name, history: h, avg10: weighted(h) });
+}));
+
+/* ---------- Profil (avatar / photo) ---------- */
+const AVATARS = 12;
+const profileOf = r => ({ name: r.name, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '', pv: r.pv || 0 });
+app.put('/api/student/profile', sauth, wrap(async (req, res) => {
+  if (limited(req, 60)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  const rec = { ...req.st.rec };
+  const b = req.body || {};
+  if (b.clear) { delete rec.photo; delete rec.avatar; }
+  else if (typeof b.photo === 'string') {
+    if (!/^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.photo) || b.photo.length > 30000) return fail(res, 400, 'Photo trop lourde ou invalide.');
+    rec.photo = b.photo; delete rec.avatar;
+  } else if (Number.isInteger(b.avatar) && b.avatar >= 0 && b.avatar < AVATARS) { rec.avatar = b.avatar; delete rec.photo; }
+  else return fail(res, 400, 'Choix invalide.');
+  rec.pv = Date.now();
+  await kv.set(stuKey(req.st.cid, req.st.pk), rec);
+  res.json({ profile: profileOf(rec) });
+}));
+app.get('/api/student/profile/:pk', sauth, wrap(async (req, res) => {
+  const rec = await kv.get(stuKey(req.st.cid, pseudoKey(req.params.pk)));
+  if (!rec) return fail(res, 404, 'Introuvable.');
+  res.json({ profile: profileOf(rec) });
+}));
+app.post('/api/classes/:id/students/:pk/photo/delete', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
+  if (!rec) return fail(res, 404, 'Élève introuvable.');
+  delete rec.photo; delete rec.avatar; rec.pv = Date.now();
+  await kv.set(stuKey(cid, pk), rec);
+  res.json({ ok: true });
+}));
+
+/* ---------- Chat de classe (modéré) ---------- */
+const BAD = ['fdp', 'ntm', 'pute', 'putain', 'connard', 'connasse', 'salope', 'encule', 'merde', 'batard', 'bouzin', 'kaka', 'bouda', 'koshon', 'koukou', 'zobo', 'manman ou', 'fout', 'nique', 'idiot', 'imbecile', 'stupide', 'con'];
+const stripAcc = t => String(t).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const badRe = new RegExp('(^|[^a-z0-9])(' + BAD.map(w => w.replace(/ /g, '\\s+')).join('|') + ')s?(?=$|[^a-z0-9])', 'gi');
+function cleanText(t) {
+  const plain = stripAcc(t);
+  // même longueur après retrait des accents : on masque aux mêmes positions
+  if (plain.length !== t.length) return plain.replace(badRe, (m, a, w) => a + '*'.repeat(w.length)) === plain ? t : t.replace(/./g, '*');
+  let out = t;
+  plain.replace(badRe, (m, a, w, off) => { const st = off + a.length; out = out.slice(0, st) + '*'.repeat(m.length - a.length) + out.slice(st + m.length - a.length); return m; });
+  return out;
+}
+const chatLock = new Map();
+async function withChat(cid, fn) {
+  const prev = chatLock.get(cid) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  chatLock.set(cid, next.catch(() => {}));
+  return next;
+}
+const chatKey = cid => 'chat:' + cid;
+const hmNow = () => new Intl.DateTimeFormat('fr-FR', { timeZone: 'America/Port-au-Prince', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+function chatSettings(cls) { return Object.assign({ on: true, from: '', to: '' }, cls.chat || {}); }
+function inHours(cs) {
+  if (!cs.from || !cs.to) return true;
+  const n = hmNow().replace('24', '00');
+  return cs.from <= cs.to ? (n >= cs.from && n <= cs.to) : (n >= cs.from || n <= cs.to);
+}
+async function inQuiz(cid, sid) {
+  for (const q of await gradedQuizzes(cid)) {
+    const a = await kv.get(attKey(q.id, sid));
+    if (a && !a.finished) return true;
+  }
+  return false;
+}
+async function chatState(st) {
+  const cls = await kv.get('class:' + st.cid), cs = chatSettings(cls || {});
+  if (!cs.on) return { open: false, reason: 'Le chat est fermé par ton professeur.' };
+  if (!inHours(cs)) return { open: false, reason: 'Le chat est fermé pour le moment (ouvert de ' + cs.from + ' à ' + cs.to + ').' };
+  if (st.rec.muted) return { open: false, reason: 'Ton professeur a coupé ton chat.', muted: true };
+  if (await inQuiz(st.cid, st.sid)) return { open: false, reason: 'Le chat est bloqué pendant un quiz.' };
+  return { open: true };
+}
+const pubMsg = (m, me) => ({ id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, pv: m.pv || 0, mine: m.pk === me, reported: (m.reports || []).includes(me) });
+app.get('/api/chat', sauth, wrap(async (req, res) => {
+  const st = await chatState(req.st);
+  const since = parseInt(req.query.since) || 0;
+  const list = (await kv.get(chatKey(req.st.cid))) || [];
+  res.json({ ...st, messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
+}));
+const sendLog = new Map();
+app.post('/api/chat', sauth, wrap(async (req, res) => {
+  const st = await chatState(req.st);
+  if (!st.open) return fail(res, 403, st.reason);
+  const k = req.st.cid + ':' + req.st.pk, now = Date.now();
+  const rec = (sendLog.get(k) || []).filter(t => now - t < 60000);
+  if (rec.length >= 6) return fail(res, 429, 'Doucement ! Maximum 6 messages par minute.');
+  const text = String(req.body.text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!text) return fail(res, 400, 'Écris un message.');
+  rec.push(now); sendLog.set(k, rec); if (sendLog.size > 5000) sendLog.clear();
+  const m = { id: now.toString(36) + crypto.randomBytes(3).toString('hex'), pk: req.st.pk, name: req.st.name, text: cleanText(text), ts: now, pv: req.st.rec.pv || 0 };
+  await withChat(req.st.cid, async () => {
+    const list = (await kv.get(chatKey(req.st.cid))) || [];
+    list.push(m);
+    await kv.set(chatKey(req.st.cid), list.slice(-150));
+  });
+  res.json({ message: pubMsg(m, req.st.pk) });
+}));
+app.post('/api/chat/report', sauth, wrap(async (req, res) => {
+  const id = str(req.body.id, 40);
+  await withChat(req.st.cid, async () => {
+    const list = (await kv.get(chatKey(req.st.cid))) || [];
+    const m = list.find(x => x.id === id);
+    if (m && m.pk !== req.st.pk) { m.reports = [...new Set([...(m.reports || []), req.st.pk])]; await kv.set(chatKey(req.st.cid), list); }
+  });
+  res.json({ ok: true });
+}));
+app.get('/api/classes/:id/chat', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), cls = await kv.get('class:' + cid);
+  if (!cls) return fail(res, 404, 'Classe introuvable.');
+  const list = (await kv.get(chatKey(cid))) || [];
+  res.json({ settings: chatSettings(cls), now: hmNow(), messages: list.map(m => ({ id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, reports: (m.reports || []).length })) });
+}));
+app.delete('/api/classes/:id/chat/:mid', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase();
+  await withChat(cid, async () => {
+    const list = (await kv.get(chatKey(cid))) || [];
+    await kv.set(chatKey(cid), list.filter(m => m.id !== req.params.mid));
+  });
+  res.json({ ok: true });
+}));
+app.post('/api/classes/:id/chat/settings', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), cls = await kv.get('class:' + cid);
+  if (!cls) return fail(res, 404, 'Classe introuvable.');
+  const t = v => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || '')) ? String(v) : '');
+  let from = t(req.body.from), to = t(req.body.to);
+  if (!from || !to) from = to = '';
+  cls.chat = { on: !!req.body.on, from, to };
+  await kv.set('class:' + cid, cls);
+  res.json({ settings: chatSettings(cls) });
+}));
+app.post('/api/classes/:id/students/:pk/mute', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
+  if (!rec) return fail(res, 404, 'Élève introuvable.');
+  rec.muted = !!req.body.muted;
+  await kv.set(stuKey(cid, pk), rec);
+  res.json({ ok: true, muted: rec.muted });
 }));
 
 /* Libellé d'un devoir (page blanche côté élève) : il faut connaître le code de la classe */
@@ -465,7 +603,7 @@ app.get('/api/classes/:id/students', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase();
   const recs = (await Promise.all((await kv.list('stu:' + cid + ':')).map(k => kv.get(k)))).filter(Boolean);
   recs.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  res.json({ students: recs.map(r => ({ name: r.name, pseudo: r.pseudo, created: r.created })) });
+  res.json({ students: recs.map(r => ({ name: r.name, pseudo: r.pseudo, created: r.created, muted: !!r.muted, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '' })) });
 }));
 app.post('/api/classes/:id/students/:pk/reset', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
@@ -560,6 +698,7 @@ app.delete('/api/classes/:id', auth, wrap(async (req, res) => {
     await kv.del('quiz:' + q.id);
   }
   await Promise.all((await kv.list('stu:' + id + ':')).map(k => kv.del(k)));
+  await kv.del(chatKey(id));
   await kv.del('class:' + id);
   res.json({ ok: true });
 }));
