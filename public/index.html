@@ -47,6 +47,9 @@ h3{font-size:1.1rem}
 .sj figure{margin:0;position:relative;border-radius:14px;overflow:hidden;background:var(--soft);aspect-ratio:16/8}
 .sj img,.cover{display:block;width:100%;height:100%;object-fit:cover}
 .sj figcaption{position:absolute;left:0;right:0;bottom:0;padding:26px 14px 10px;color:#fff;font:700 1.05rem Georgia,"Times New Roman",serif;background:linear-gradient(180deg,rgba(10,20,60,0),rgba(10,20,60,.85))}
+.ai{border:1.5px dashed var(--blue);border-radius:12px;padding:14px;margin:18px 0}
+.ai textarea{min-height:110px}
+.aitag{display:inline-block;margin:0 0 6px;padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:700;background:var(--warn);color:var(--amber)}
 .cover{height:110px;border-radius:10px;margin:0 0 12px}
 .contact{margin:34px 0 8px}
 .contact h2{margin:0 0 4px}
@@ -486,12 +489,17 @@ ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
 ${L.length?L.map(q=>`<div class="card">
 <h3>${esc(q.title)}</h3>
-<p style="margin:0 0 8px"><span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}</p>
+<p style="margin:0 0 8px">${q.draft?'<span class="tag warn">Brouillon : invisible pour les élèves</span>':''}<span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}</p>
 <p class="hint" style="margin:0 0 12px">${q.qs.length} question${q.qs.length>1?'s':''} · ${q.n} copie${q.n>1?'s':''}</p>
 ${q.qs.length?`<button class="btn small primary" onclick="openRes('${esc(q.id)}')">Résultats</button>`:''}
-<button class="btn small" onclick="editQuiz('${esc(q.id)}')">Modifier</button>
+${q.draft?`<button class="btn small primary" onclick="publishQuiz('${esc(q.id)}')">Publier</button>`:''}<button class="btn small" onclick="editQuiz('${esc(q.id)}')">${q.draft?'Relire et modifier':'Modifier'}</button>
 <button class="btn small danger" onclick="delQuiz('${esc(q.id)}')">Supprimer</button>
 </div>`).join(''):'<p class="muted">Aucun travail dans cette classe pour le moment.</p>'}`}
+async function publishQuiz(id){
+  if(!confirm('Publier ce travail pour la classe ? Les élèves pourront le voir.'))return;
+  try{const r=await api('/api/quizzes/'+id);r.quiz.draft=false;await api('/api/quizzes','POST',r.quiz);openClass(S.tc.class.id)}
+  catch(e){S.err=e.message;render()}
+}
 async function delQuiz(id){
   if(!confirm('Supprimer ce travail et toutes ses copies ?'))return;
   try{await api('/api/quizzes/'+id,'DELETE');openClass(S.tc.class.id)}catch(e){S.err=e.message;render()}
@@ -525,8 +533,8 @@ ${t.per.length?'':'<p class="muted">Aucun quiz dans cette classe pour le moment.
 
 /* ---------- Professeur : éditeur ---------- */
 function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
-function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',qs:[blankQ('qcm')]};S.err='';S.view='editor';render()}
-async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
+function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',draft:false,qs:[blankQ('qcm')]};S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}
+async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
 function setMode(m){S.d.mode=m;if(m!=='libelle'&&!S.d.qs.length)S.d.qs=[blankQ('qcm')];if(m==='devoir'&&S.d.minutes===15)S.d.minutes=0;render()}
 function vEditor(){
   const d=S.d,lib=d.mode==='libelle';
@@ -553,13 +561,46 @@ ${COLORS.map(c=>`<button class="sw${c[1]==='#ffffff'?' white':''}" style="backgr
 </div>
 <div id="brief" class="paper editor" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="bl" oninput="S.d.brief=this.innerHTML" onpaste="pastePlain(event)"></div>
 <p class="hint">Sélectionne des mots (appui long), puis touche une couleur. La page de l'élève reste blanche : le texte blanc y est invisible (ici, il apparaît grisé pour que tu le retrouves). L'élève pourra copier ce texte.</p>
+${lib?'':vAI()}
 ${lib?'':`<h3 style="margin-top:24px">Questions</h3>
 ${d.qs.map(qCard).join('')}
 <p class="hint">Ajouter une question :</p>
 <button class="btn small" onclick="addQ('qcm')">Choix multiple</button><button class="btn small" onclick="addQ('vf')">Vrai ou faux</button><button class="btn small" onclick="addQ('court')">Réponse courte</button><button class="btn small" onclick="addQ('long')">Réponse rédigée</button>`}
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p>
-<button class="btn primary" onclick="saveQuiz()">Enregistrer</button>`}
+<button class="btn primary" onclick="saveQuiz(false)">Publier pour la classe</button>
+<button class="btn" onclick="saveQuiz(true)">Enregistrer en brouillon</button>
+<p class="hint">Un brouillon reste invisible pour les élèves tant que tu ne le publies pas.</p>`}
+function vAI(){
+  const a=S.ai||(S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false});
+  const T=[['qcm','Choix multiple'],['vf','Vrai ou faux'],['court','Réponse courte'],['long','Réponse rédigée']];
+  return `<div class="ai"><h3 style="margin:0 0 4px">Générer les questions avec l'IA</h3>
+<p class="hint" style="margin:0 0 8px">Colle ton résumé de cours, ou écris juste le titre de la leçon. Les questions arrivent en brouillon : tu les relis avant de publier.</p>
+<label for="aitxt" style="margin-top:6px">Cours ou leçon</label>
+<textarea id="aitxt" oninput="S.ai.text=this.value">${esc(a.text)}</textarea>
+<label for="aicnt">Nombre de questions (1 à 20)</label>
+<input type="number" id="aicnt" min="1" max="20" value="${a.count}" oninput="S.ai.count=Math.max(1,Math.min(20,+this.value||10))">
+${T.map(t=>`<label class="check"><input type="checkbox" ${a.types.includes(t[0])?'checked':''} onchange="aiType('${t[0]}',this.checked)"> ${t[1]}</label>`).join('')}
+<p></p>
+<button class="btn primary" id="aibtn" onclick="aiGo()" ${a.busy?'disabled':''}>${a.busy?'Génération en cours…':'Générer le brouillon'}</button>
+<p class="${a.ok?'good':'err'}" role="status" id="aimsg" style="margin:6px 0 0">${esc(a.msg)}</p></div>`}
+function aiType(t,on){const a=S.ai;a.types=on?[...new Set([...a.types,t])]:a.types.filter(x=>x!==t)}
+async function aiGo(){
+  const a=S.ai,d=S.d;
+  if(!a.types.length){a.msg='Choisis au moins un type de question.';a.ok=false;return render()}
+  if(a.text.trim().length<8){a.msg='Colle ton cours ou écris le titre de la leçon.';a.ok=false;return render()}
+  a.busy=true;a.msg='';render();
+  try{
+    const r=await api('/api/generate','POST',{text:a.text,count:a.count,types:a.types,subject:d.subject,mode:d.mode,level:(S.tc&&S.tc.class&&S.tc.class.name)||''});
+    r.qs.forEach(q=>q.ai=true);
+    const onlyBlank=d.qs.length===1&&!d.qs[0].q.trim();
+    d.qs=onlyBlank?r.qs:d.qs.concat(r.qs);
+    d.draft=true;
+    a.busy=false;a.ok=true;a.msg=r.qs.length+' question'+(r.qs.length>1?'s':'')+' ajoutée'+(r.qs.length>1?'s':'')+' en brouillon. Relis chacune avant de publier.'+(r.qs.length<r.asked?' (L\'IA en a produit moins que demandé.)':'');
+    render();
+    const f=document.querySelector('.card .aitag');if(f)f.scrollIntoView({block:'center'});
+  }catch(e){a.busy=false;a.ok=false;a.msg=e.message;render()}
+}
 function fmt(c,v){
   const el=document.getElementById('brief');el.focus();
   try{document.execCommand('defaultParagraphSeparator',false,'p');document.execCommand('styleWithCSS',false,true)}catch(e){}
@@ -579,6 +620,7 @@ function qCard(q,i){
   else if(q.t==='court')b=`<label for="a${i}">Réponses acceptées, séparées par |</label><input type="text" id="a${i}" placeholder="ex : mémoire vive | RAM" value="${esc(q.a)}" oninput="S.d.qs[${i}].a=this.value">`;
   else b='<p class="hint">Réponse rédigée : tu la corriges toi-même dans les résultats.</p>';
   return `<div class="card">
+${q.ai?'<span class="aitag">Générée par l\'IA : à vérifier</span>':''}
 <div class="row"><select class="grow" aria-label="Type de la question ${i+1}" onchange="setT(${i},this.value)">
 <option value="qcm" ${q.t==='qcm'?'selected':''}>Choix multiple</option><option value="vf" ${q.t==='vf'?'selected':''}>Vrai ou faux</option><option value="court" ${q.t==='court'?'selected':''}>Réponse courte</option><option value="long" ${q.t==='long'?'selected':''}>Réponse rédigée</option></select>
 <button class="btn small danger" style="margin:0" onclick="delQ(${i})" aria-label="Retirer la question ${i+1}">Retirer</button></div>
@@ -589,7 +631,8 @@ ${q.t!=='long'?`<label class="check"><input type="checkbox" ${q.why?'checked':''
 function setT(i,t){const old=S.d.qs[i];const n=blankQ(t);n.q=old.q;n.why=t==='long'?false:old.why;S.d.qs[i]=n;render()}
 function addQ(t){S.d.qs.push(blankQ(t));render();window.scrollTo(0,document.body.scrollHeight)}
 function delQ(i){if(S.d.qs.length<2)return;S.d.qs.splice(i,1);render()}
-async function saveQuiz(){
+async function saveQuiz(draft){
+  S.d.draft=!!draft;
   try{await api('/api/quizzes','POST',S.d);openClass(S.d.classId)}
   catch(e){S.err=e.message;render();window.scrollTo(0,document.body.scrollHeight)}
 }

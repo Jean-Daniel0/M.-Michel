@@ -131,6 +131,7 @@ function cleanQuiz(d) {
     deadline: /^\d{4}-\d{2}-\d{2}$/.test(d.deadline || '') ? d.deadline : '',
     draw: mode === 'libelle' ? 0 : Math.max(0, Math.min(qs.length, parseInt(d.draw) || 0)),
     qs,
+    draft: !!d.draft,
     created: d.created || Date.now(),
   };
 }
@@ -225,7 +226,7 @@ app.post('/api/login', wrap(async (req, res) => {
   if (safeEq(code, TEACHER_CODE)) return res.json({ role: 'teacher', token: sign({ r: 't', exp: Date.now() + 30 * 864e5 }) });
   const cls = await kv.get('class:' + code.toUpperCase());
   if (!cls) return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.');
-  const qs = await classQuizzes(cls.id);
+  const qs = (await classQuizzes(cls.id)).filter(q => !q.draft);
   res.json({ role: 'class', class: { name: cls.name, level: cls.level || '' }, devoirs: qs.map(publicInfo) });
 }));
 
@@ -234,7 +235,7 @@ app.post('/api/brief', wrap(async (req, res) => {
   if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const classId = str(req.body.code, 8).toUpperCase(), qid = str(req.body.qid, 8).toUpperCase();
   const quiz = await kv.get('quiz:' + qid);
-  if (!quiz || quiz.classId !== classId || !briefText(quiz.brief)) return fail(res, 404, 'Libellé introuvable.');
+  if (!quiz || quiz.draft || quiz.classId !== classId || !briefText(quiz.brief)) return fail(res, 404, 'Libellé introuvable.');
   res.json({ title: quiz.title, brief: quiz.brief });
 }));
 
@@ -244,7 +245,7 @@ app.post('/api/start', wrap(async (req, res) => {
   const key = nameKey(name);
   if (key.length < 3) return fail(res, 400, 'Entre ton prénom et ton nom.');
   const quiz = await kv.get('quiz:' + id);
-  if (!quiz || quiz.classId !== classId) return fail(res, 404, 'Travail introuvable.');
+  if (!quiz || quiz.draft || quiz.classId !== classId) return fail(res, 404, 'Travail introuvable.');
   if (!quiz.qs.length) return fail(res, 400, 'Ce travail n\'a pas de quiz à passer.');
   let att = await kv.get(attKey(id, key));
   if (att) {
@@ -461,6 +462,113 @@ app.post('/api/results/:id/:key/mark', auth, wrap(async (req, res) => {
 app.delete('/api/results/:id/:key', auth, wrap(async (req, res) => {
   await kv.del(attKey(req.params.id.toUpperCase(), req.params.key));
   res.json({ ok: true });
+}));
+
+/* ---------- Génération de questions par IA (Gemini) : toujours en brouillon ---------- */
+const GEMINI_BASE = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
+const GEMINI_MODELS = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(Boolean);
+const genHits = new Map();
+function genLimited() {
+  const now = Date.now(), v = (genHits.get('t') || []).filter(t => now - t < 3600e3);
+  v.push(now); genHits.set('t', v); return v.length > 30;
+}
+function buildPrompt({ subject, level, count, types, text, mode }) {
+  const T = { qcm: 'choix multiple (4 choix, une seule bonne réponse)', vf: 'vrai ou faux', court: 'réponse courte (un mot ou une expression)', long: 'réponse rédigée (question ouverte, sans réponse attendue)' };
+  return [
+    'Tu es un professeur du système éducatif haïtien (enseignement fondamental et secondaire). Tu prépares un ' + (mode === 'devoir' ? 'devoir à la maison' : 'quiz en classe') + '.',
+    'Matière : ' + subject + (level ? '. Classe / niveau : ' + level : '') + '.',
+    'Écris en français simple et clair, adapté à l\'âge des élèves. Utilise des exemples proches de la vie en Haïti quand c\'est naturel.',
+    'Appuie-toi UNIQUEMENT sur le contenu ci-dessous. N\'invente aucun fait qui n\'y figure pas. Si le contenu est un simple titre de leçon, reste sur des notions de base et sûres, très largement enseignées.',
+    'Crée exactement ' + count + ' questions, en mélangeant ces types : ' + types.map(t => T[t]).join(' ; ') + '.',
+    'Règles : chaque question doit avoir une seule bonne réponse sans ambiguïté. Pas de piège gratuit. Les mauvais choix doivent être plausibles. Pas de « toutes les réponses » ni « aucune des réponses ». Varie la position de la bonne réponse.',
+    'Réponds UNIQUEMENT avec un tableau JSON, sans texte autour ni balises. Chaque élément a ce format :',
+    '{"t":"qcm","q":"...","opts":["...","...","...","..."],"a":0}  (a = position de la bonne réponse, de 0 à 3)',
+    '{"t":"vf","q":"Affirmation à juger","a":"vrai"}  (a = "vrai" ou "faux")',
+    '{"t":"court","q":"...","a":"réponse attendue | autre formulation acceptée"}',
+    '{"t":"long","q":"..."}',
+    '',
+    'CONTENU :',
+    text,
+  ].join('\n');
+}
+function cleanGenerated(arr, types, count) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const q of arr) {
+    if (!q || typeof q !== 'object') continue;
+    const t = ['qcm', 'vf', 'court', 'long'].includes(q.t) && types.includes(q.t) ? q.t : null;
+    const text = str(q.q, 1500).trim();
+    if (!t || !text) continue;
+    if (t === 'qcm') {
+      const opts = (Array.isArray(q.opts) ? q.opts : []).slice(0, 4).map(o => str(o, 300).trim());
+      const a = Number.isInteger(q.a) ? q.a : parseInt(q.a);
+      if (opts.length < 2 || opts.some(o => !o) || !(a >= 0 && a < opts.length)) continue;
+      const order = shuffle(opts.map((o, i) => i));
+      out.push({ t, q: text, opts: order.map(i => opts[i]).concat(['', '', '', '']).slice(0, 4), a: order.indexOf(a), why: false });
+    } else if (t === 'vf') {
+      const a = String(q.a).toLowerCase().startsWith('f') ? 'faux' : 'vrai';
+      out.push({ t, q: text, opts: ['', '', '', ''], a, why: false });
+    } else if (t === 'court') {
+      const a = str(q.a, 500).trim(); if (!a) continue;
+      out.push({ t, q: text, opts: ['', '', '', ''], a, why: false });
+    } else out.push({ t, q: text, opts: ['', '', '', ''], a: '', why: false });
+    if (out.length >= count) break;
+  }
+  return out;
+}
+async function callGemini(prompt) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) { const e = new Error('no-key'); e.code = 'no-key'; throw e; }
+  let last;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const r = await fetch(GEMINI_BASE + '/v1beta/models/' + model + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.5, responseMimeType: 'application/json' } }),
+        signal: AbortSignal.timeout(50000),
+      });
+      if (r.status === 429) { const e = new Error('quota'); e.code = 'quota'; throw e; }
+      if (r.status === 400 || r.status === 403) { const b = await r.text(); console.error('Gemini', r.status, b.slice(0, 300)); const e = new Error('key'); e.code = 'key'; last = e; if (r.status === 403) throw e; continue; }
+      if (r.status === 404) { last = new Error('model'); continue; }
+      if (!r.ok) { console.error('Gemini', r.status); last = new Error('http'); continue; }
+      const j = await r.json();
+      const txt = j && j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts ? j.candidates[0].content.parts.map(p => p.text || '').join('') : '';
+      if (!txt) { last = new Error('empty'); continue; }
+      return txt;
+    } catch (e) { if (e.code === 'quota' || e.code === 'key') throw e; last = e; }
+  }
+  throw last || new Error('fail');
+}
+function parseJsonLoose(txt) {
+  let t = String(txt).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  try { return JSON.parse(t); } catch (e) {}
+  const a = t.indexOf('['), b = t.lastIndexOf(']');
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+  return null;
+}
+app.get('/api/generate/status', auth, (req, res) => res.json({ enabled: !!process.env.GEMINI_API_KEY }));
+app.post('/api/generate', auth, wrap(async (req, res) => {
+  if (genLimited()) return fail(res, 429, 'Trop de générations cette heure. Réessaie plus tard.');
+  const text = str(req.body.text, 12000).trim();
+  if (text.length < 8) return fail(res, 400, 'Colle ton résumé de cours ou écris le titre de la leçon.');
+  const count = Math.max(1, Math.min(20, parseInt(req.body.count) || 10));
+  let types = (Array.isArray(req.body.types) ? req.body.types : []).filter(t => ['qcm', 'vf', 'court', 'long'].includes(t));
+  if (!types.length) types = ['qcm', 'vf'];
+  const subject = SUBJECTS.includes(req.body.subject) ? req.body.subject : 'Autre';
+  const prompt = buildPrompt({ subject, level: str(req.body.level, 80), count, types, text, mode: req.body.mode === 'devoir' ? 'devoir' : 'quiz' });
+  let raw;
+  try { raw = await callGemini(prompt); }
+  catch (e) {
+    if (e.code === 'no-key') return fail(res, 503, 'La clé de l\'IA n\'est pas configurée dans Render (GEMINI_API_KEY).');
+    if (e.code === 'quota') return fail(res, 429, 'Le quota gratuit du jour est épuisé. Réessaie demain ou écris les questions toi-même.');
+    if (e.code === 'key') return fail(res, 502, 'La clé de l\'IA est refusée. Vérifie GEMINI_API_KEY dans Render.');
+    console.error('Génération échouée', e.message);
+    return fail(res, 502, 'L\'IA ne répond pas pour le moment. Réessaie dans un instant.');
+  }
+  const qs = cleanGenerated(parseJsonLoose(raw), types, count);
+  if (!qs.length) return fail(res, 502, 'L\'IA n\'a pas produit de questions utilisables. Réessaie avec plus de détails.');
+  res.json({ qs, asked: count });
 }));
 app.get('/api/me', auth, (req, res) => res.json({ ok: true }));
 app.get('/healthz', (req, res) => res.send('ok'));
