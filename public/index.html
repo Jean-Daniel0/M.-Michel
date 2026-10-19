@@ -423,7 +423,6 @@ function vChat(){
   const c=S.ch;
   return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
 <h2>Chat · ${esc(S.cls.name)}</h2>
-<p class="hint" style="margin:0 0 8px">Sois respectueux. Ton professeur peut lire et supprimer les messages. Touche « Signaler » en cas de problème.</p>
 <div id="chmsgs" class="card" style="max-height:55vh;overflow-y:auto;min-height:120px"></div>
 <p id="chinfo" class="err" role="status" style="display:none"></p>
 <div id="chform" style="display:flex;gap:8px"><input type="text" id="chtxt" maxlength="300" placeholder="Écris un message…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" onclick="sendChat()" style="width:auto;flex:none">Envoyer</button></div>
