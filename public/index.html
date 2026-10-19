@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#16358c">
 <title>M.Michel</title>
 <link rel="icon" href="/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="M.Michel">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 :root{--bg:#f5f6fa;--card:#fff;--ink:#12182b;--mute:#586078;--line:#d6dcea;--blue:#16358c;--on-blue:#fff;--red:#b80f2b;--green:#15704a;--amber:#8f5400;--soft:#e7ecfa;--warn:#fff3da;color-scheme:light}
 @media(prefers-color-scheme:dark){:root{--bg:#0e1322;--card:#171e36;--ink:#eef1fa;--mute:#9ba5c0;--line:#29335a;--blue:#8aa6ff;--on-blue:#0b1230;--red:#ff7088;--green:#52d89a;--amber:#f2b955;--soft:#1e2851;--warn:#3a2f14;color-scheme:dark}}
@@ -143,6 +149,20 @@ ul.rules li{margin:.4em 0}
 <main id="app"></main>
 <script src="/avatar.js"></script>
 <script>
+/* ---------- PWA : installation ---------- */
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+let installEv=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e;if(S.view==='home')render()});
+window.addEventListener('appinstalled',()=>{installEv=null;if(S.view==='home')render()});
+async function installApp(){if(!installEv)return;installEv.prompt();try{await installEv.userChoice}catch(e){}installEv=null;render()}
+const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone;
+const isStandalone=()=>(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone;
+function vInstall(){
+  if(isStandalone())return '';
+  if(installEv)return '<button class="btn" onclick="installApp()">📲 Installer l\'application sur mon téléphone</button>';
+  if(isIOS())return '<p class="hint" style="text-align:center">📲 Pour installer : touche <b>Partager</b> puis <b>Sur l\'écran d\'accueil</b>.</p>';
+  return '';
+}
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
@@ -232,6 +252,7 @@ ${mascot(S.err?'oops':'hello',S.err||'Bonjour ! Entre le code reçu pour commenc
 <p></p>
 <button class="btn primary" id="hb" onclick="homeGo()" ${S.busy?'disabled':''}>Continuer</button>
 ${S.token?'<button class="btn" onclick="backToTeacher()">Retour à mon espace</button>':''}
+${vInstall()}
 ${vContact()}
 ${vSubjects()}`}
 
