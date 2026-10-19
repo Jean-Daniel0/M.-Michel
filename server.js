@@ -720,22 +720,25 @@ const OS_BASE = process.env.ONESIGNAL_BASE_URL || 'https://api.onesignal.com';
 const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_API_KEY || '';
 const OS_APP = process.env.ONESIGNAL_APP_ID || '42d7f370-40da-48eb-954c-4feb568a53b3'; // identifiant public, pas un secret
 const pushOn = () => !!(OS_APP && osKey());
+const tagOf = (cid, pk) => 'u_' + cid + '_' + pk;
 async function pushToClass(cid, { title, body, exclude, url }) {
   const out = { sent: false, recipients: 0, status: 0, detail: '' };
   if (!pushOn()) { out.detail = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return out; }
   try {
     const keys = await kv.list('stu:' + cid + ':');
-    const ids = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude).map(pk => cid + ':' + pk);
-    out.recipients = ids.length;
-    if (!ids.length) { out.detail = 'Aucun autre élève inscrit dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
-    for (let i = 0; i < ids.length; i += 1500) {
+    const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude);
+    out.recipients = pks.length;
+    if (!pks.length) { out.detail = 'Aucun élève à notifier dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
+    // Ciblage par étiquette d'appareil : un même téléphone peut porter plusieurs comptes élèves.
+    for (let i = 0; i < pks.length; i += 100) {
+      const filters = [];
+      pks.slice(i, i + 100).forEach((pk, n) => { if (n) filters.push({ operator: 'OR' }); filters.push({ field: 'tag', key: tagOf(cid, pk), relation: '=', value: '1' }); });
       const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
       const r = await fetch(OS_BASE + '/notifications', {
         method: 'POST', signal: ctl.signal,
         headers: { 'Content-Type': 'application/json', Authorization: 'Key ' + osKey() },
         body: JSON.stringify({
-          app_id: OS_APP, target_channel: 'push',
-          include_aliases: { external_id: ids.slice(i, i + 1500) },
+          app_id: OS_APP, target_channel: 'push', filters,
           headings: { fr: title, en: title }, contents: { fr: body, en: body },
           url: url || '/', ttl: 86400 * 2,
         }),
@@ -743,7 +746,7 @@ async function pushToClass(cid, { title, body, exclude, url }) {
       clearTimeout(to);
       const txt = (await r.text()).slice(0, 400);
       out.status = r.status; out.detail = txt; out.sent = r.ok;
-      console.log('OneSignal', r.status, 'destinataires:', ids.length, txt.slice(0, 200));
+      console.log('OneSignal', r.status, 'élèves visés:', Math.min(100, pks.length - i), txt.slice(0, 200));
     }
   } catch (e) { out.detail = e.message; console.error('OneSignal erreur', e.message); }
   return out;

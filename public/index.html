@@ -215,7 +215,8 @@ async function initPush(){
 function pushIdentify(){
   try{
     if(!(osReady&&S.stu&&S.code))return;
-    window.OneSignal.login(S.code+':'+S.stu.pseudo);
+    // étiquette de l'appareil : plusieurs comptes peuvent coexister sur un même téléphone
+    window.OneSignal.User.addTag('u_'+S.code+'_'+S.stu.pseudo,'1');
     // permission déjà accordée mais abonnement désactivé chez OneSignal : on le réactive
     if('Notification' in window&&Notification.permission==='granted'&&!window.OneSignal.User.PushSubscription.optedIn)window.OneSignal.User.PushSubscription.optIn();
   }catch(e){}
@@ -395,7 +396,7 @@ async function stuGo(){
     pushIdentify();go('devoirs');
   }catch(e){setErr(e.message)}
 }
-function stuLogout(){try{if(osReady)window.OneSignal.logout()}catch(e){}stopChat();setBadge(0);store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
+function stuLogout(){try{if(osReady&&S.stu)window.OneSignal.User.removeTag('u_'+S.code+'_'+S.stu.pseudo)}catch(e){}stopChat();setBadge(0);store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
 
 /* ---------- Avatars et photos de profil ---------- */
 const AV=['🦁','🐯','🐼','🦊','🐸','🐧','🦄','🐙','🚀','⚽','🎨','💻'];
