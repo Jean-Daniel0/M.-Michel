@@ -20,5 +20,5 @@ services:
           property: connectionString
       - key: ONESIGNAL_APP_ID
         sync: false
-      - key: ONESIGNAL_API_KEY
+      - key: ONESIGNAL_REST_API_KEY
         sync: false

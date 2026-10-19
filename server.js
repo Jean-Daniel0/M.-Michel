@@ -717,7 +717,8 @@ app.get('/api/quizzes/:id', auth, wrap(async (req, res) => {
 }));
 /* ---------- Notifications push (OneSignal) ---------- */
 const OS_BASE = process.env.ONESIGNAL_BASE_URL || 'https://api.onesignal.com';
-const pushOn = () => !!(process.env.ONESIGNAL_APP_ID && process.env.ONESIGNAL_API_KEY);
+const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_API_KEY || '';
+const pushOn = () => !!(process.env.ONESIGNAL_APP_ID && osKey());
 async function pushToClass(cid, { title, body, exclude, url }) {
   if (!pushOn()) return;
   try {
@@ -728,7 +729,7 @@ async function pushToClass(cid, { title, body, exclude, url }) {
       const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
       const r = await fetch(OS_BASE + '/notifications', {
         method: 'POST', signal: ctl.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: 'Key ' + process.env.ONESIGNAL_API_KEY },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Key ' + osKey() },
         body: JSON.stringify({
           app_id: process.env.ONESIGNAL_APP_ID, target_channel: 'push',
           include_aliases: { external_id: ids.slice(i, i + 1500) },
