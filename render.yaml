@@ -18,3 +18,7 @@ services:
         fromDatabase:
           name: m-michel-db
           property: connectionString
+      - key: ONESIGNAL_APP_ID
+        sync: false
+      - key: ONESIGNAL_API_KEY
+        sync: false

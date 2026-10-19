@@ -431,6 +431,8 @@ app.post('/api/chat', sauth, wrap(async (req, res) => {
     await kv.set(chatKey(req.st.cid), list.slice(-150));
   });
   res.json({ message: pubMsg(m, req.st.pk) });
+  const lp = lastChatPush.get(req.st.cid) || 0;
+  if (now - lp > 60000) { lastChatPush.set(req.st.cid, now); pushToClass(req.st.cid, { title: 'Nouveau message 💬', body: 'Il y a du nouveau dans le chat de ta classe.', exclude: req.st.pk, url: '/' }); }
 }));
 app.post('/api/chat/report', sauth, wrap(async (req, res) => {
   const id = str(req.body.id, 40);
@@ -713,6 +715,35 @@ app.get('/api/quizzes/:id', auth, wrap(async (req, res) => {
   if (!q) return fail(res, 404, 'Introuvable.');
   res.json({ quiz: q });
 }));
+/* ---------- Notifications push (OneSignal) ---------- */
+const OS_BASE = process.env.ONESIGNAL_BASE_URL || 'https://api.onesignal.com';
+const pushOn = () => !!(process.env.ONESIGNAL_APP_ID && process.env.ONESIGNAL_API_KEY);
+async function pushToClass(cid, { title, body, exclude, url }) {
+  if (!pushOn()) return;
+  try {
+    const keys = await kv.list('stu:' + cid + ':');
+    const ids = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude).map(pk => cid + ':' + pk);
+    if (!ids.length) return;
+    for (let i = 0; i < ids.length; i += 1500) {
+      const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(OS_BASE + '/notifications', {
+        method: 'POST', signal: ctl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Key ' + process.env.ONESIGNAL_API_KEY },
+        body: JSON.stringify({
+          app_id: process.env.ONESIGNAL_APP_ID, target_channel: 'push',
+          include_aliases: { external_id: ids.slice(i, i + 1500) },
+          headings: { fr: title, en: title }, contents: { fr: body, en: body },
+          url: url || '/', ttl: 86400 * 2,
+        }),
+      });
+      clearTimeout(to);
+      if (!r.ok) console.error('OneSignal', r.status, (await r.text()).slice(0, 200));
+    }
+  } catch (e) { console.error('OneSignal erreur', e.message); }
+}
+const lastChatPush = new Map();
+app.get('/api/config', (req, res) => res.json({ onesignalAppId: pushOn() ? process.env.ONESIGNAL_APP_ID : '' }));
+
 app.post('/api/quizzes', auth, wrap(async (req, res) => {
   const d = cleanQuiz(req.body || {});
   if (!d.title) return fail(res, 400, 'Donne un titre.');
@@ -728,18 +759,22 @@ app.post('/api/quizzes', auth, wrap(async (req, res) => {
     }
     if (q.t === 'court' && !q.a.trim()) return fail(res, 400, `Indique la réponse attendue pour la question ${n}.`);
   }
+  let announce = false;
   if (!d.id) {
+    announce = !d.draft;
     d.id = await newCode();
     if (!d.id) return fail(res, 500, 'Impossible de créer un code. Réessaie.');
   } else {
     const old = await kv.get('quiz:' + d.id);
     if (!old) return fail(res, 404, 'Quiz introuvable.');
     d.created = old.created;
+    announce = !d.draft && !!old.draft;
   }
   const cl = await kv.get('class:' + d.classId);
   if (!periodsOf(cl).includes(d.period)) d.period = '';
   await kv.set('quiz:' + d.id, d);
   res.json({ quiz: d });
+  if (announce) pushToClass(d.classId, { title: 'Nouveau ' + (d.mode === 'libelle' ? 'travail' : d.mode === 'devoir' ? 'devoir' : 'quiz') + ' 📝', body: d.title, url: '/' });
 }));
 app.delete('/api/quizzes/:id', auth, wrap(async (req, res) => {
   const id = req.params.id.toUpperCase();
