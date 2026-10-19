@@ -718,7 +718,8 @@ app.get('/api/quizzes/:id', auth, wrap(async (req, res) => {
 /* ---------- Notifications push (OneSignal) ---------- */
 const OS_BASE = process.env.ONESIGNAL_BASE_URL || 'https://api.onesignal.com';
 const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_API_KEY || '';
-const pushOn = () => !!(process.env.ONESIGNAL_APP_ID && osKey());
+const OS_APP = process.env.ONESIGNAL_APP_ID || '42d7f370-40da-48eb-954c-4feb568a53b3'; // identifiant public, pas un secret
+const pushOn = () => !!(OS_APP && osKey());
 async function pushToClass(cid, { title, body, exclude, url }) {
   if (!pushOn()) return;
   try {
@@ -731,7 +732,7 @@ async function pushToClass(cid, { title, body, exclude, url }) {
         method: 'POST', signal: ctl.signal,
         headers: { 'Content-Type': 'application/json', Authorization: 'Key ' + osKey() },
         body: JSON.stringify({
-          app_id: process.env.ONESIGNAL_APP_ID, target_channel: 'push',
+          app_id: OS_APP, target_channel: 'push',
           include_aliases: { external_id: ids.slice(i, i + 1500) },
           headings: { fr: title, en: title }, contents: { fr: body, en: body },
           url: url || '/', ttl: 86400 * 2,
@@ -743,7 +744,7 @@ async function pushToClass(cid, { title, body, exclude, url }) {
   } catch (e) { console.error('OneSignal erreur', e.message); }
 }
 const lastChatPush = new Map();
-app.get('/api/config', (req, res) => res.json({ onesignalAppId: pushOn() ? process.env.ONESIGNAL_APP_ID : '' }));
+app.get('/api/config', (req, res) => res.json({ onesignalAppId: pushOn() ? OS_APP : '' }));
 
 app.post('/api/quizzes', auth, wrap(async (req, res) => {
   const d = cleanQuiz(req.body || {});
