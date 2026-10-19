@@ -408,6 +408,12 @@ app.get('/api/chat', sauth, wrap(async (req, res) => {
   const list = (await kv.get(chatKey(req.st.cid))) || [];
   res.json({ ...st, messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
 }));
+app.get('/api/chat/unread', sauth, wrap(async (req, res) => {
+  const since = parseInt(req.query.since) || 0;
+  const list = (await kv.get(chatKey(req.st.cid))) || [];
+  const mine = list.filter(m => m.ts > since && m.pk !== req.st.pk);
+  res.json({ count: Math.min(mine.length, 99), last: list.length ? list[list.length - 1].ts : 0 });
+}));
 const sendLog = new Map();
 app.post('/api/chat', sauth, wrap(async (req, res) => {
   const st = await chatState(req.st);

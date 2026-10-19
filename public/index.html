@@ -152,11 +152,44 @@ ul.rules li{margin:.4em 0}
 /* ---------- PWA : installation ---------- */
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 let installEv=null;
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e;if(S.view==='home')render()});
-window.addEventListener('appinstalled',()=>{installEv=null;if(S.view==='home')render()});
-async function installApp(){if(!installEv)return;installEv.prompt();try{await installEv.userChoice}catch(e){}installEv=null;render()}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e;if(S.view==='home')render();setTimeout(showInstallPopup,2500)});
+window.addEventListener('appinstalled',()=>{installEv=null;closeInstallPopup();if(S.view==='home')render()});
+async function installApp(){if(!installEv)return;closeInstallPopup();installEv.prompt();try{await installEv.userChoice}catch(e){}installEv=null;render()}
+function closeInstallPopup(){const e=document.getElementById('ipop');if(e)e.remove()}
+function laterInstall(){store.set('mm_inst_later',String(Date.now()));closeInstallPopup()}
+function showInstallPopup(){
+  if(document.getElementById('ipop')||isStandalone()||S.view==='take')return;
+  const t=parseInt(store.get('mm_inst_later'))||0;if(Date.now()-t<3*864e5)return;
+  const ios=isIOS();if(!installEv&&!ios)return;
+  const d=document.createElement('div');d.id='ipop';d.setAttribute('role','dialog');d.setAttribute('aria-label',"Installer l'application");
+  d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px';
+  d.innerHTML=`<div style="max-width:520px;margin:0 auto;background:#fff;border:1.5px solid #c9d3ea;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><img src="/icon-192.png" width="56" height="56" alt="" style="border-radius:12px"><div style="flex:1;min-width:180px"><b>Installer M.Michel</b><div class="muted" style="font-size:.9rem">${ios?'Touche <b>Partager</b> puis <b>Sur l\'écran d\'accueil</b>.':'Ajoute le site à ton écran d\'accueil : accès rapide, comme une application.'}</div></div><div style="display:flex;gap:8px;width:100%;justify-content:flex-end">${ios?'':'<button class="btn small primary" onclick="installApp()">Installer</button>'}<button class="btn small" onclick="laterInstall()">${ios?'OK':'Plus tard'}</button></div></div>`;
+  document.body.appendChild(d);
+}
+window.addEventListener('load',()=>setTimeout(()=>{if(isIOS())showInstallPopup()},3000));
 const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.navigator.standalone;
 const isStandalone=()=>(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone;
+const MSG_ICON='<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" style="vertical-align:-3px;margin-right:6px"><path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/></svg>';
+const seenKey=()=>'mm_seen:'+S.code+':'+(S.stu?S.stu.pseudo:'');
+const getSeen=()=>parseInt(store.get(seenKey()))||0;
+function setSeen(ts){if(ts>getSeen())store.set(seenKey(),String(ts))}
+function setBadge(n){
+  S.unread=n;
+  const b=document.getElementById('chbadge');
+  if(b){b.textContent=n>99?'99+':n;b.style.display=n>0?'inline-flex':'none'}
+  try{if(navigator.setAppBadge){n>0?navigator.setAppBadge(n):navigator.clearAppBadge()}}catch(e){}
+}
+async function checkUnread(){
+  if(!S.stu||S.view==='chat'||document.hidden)return;
+  try{
+    let seen=getSeen();
+    if(!seen){const r=await api('/api/chat/unread?since=0');if(!store.get(seenKey())){/* première fois : on ne compte pas l'ancien historique */setSeen(r.last||1);return setBadge(0)}}
+    const r=await api('/api/chat/unread?since='+seen);setBadge(r.count);
+  }catch(e){}
+}
+let unreadTimer=null;
+setInterval(()=>{if(S.view==='devoirs'||S.view==='mynotes'||S.view==='profile')checkUnread()},20000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUnread()});
 function vInstall(){
   if(isStandalone())return '';
   if(installEv)return '<button class="btn" onclick="installApp()">📲 Installer l\'application sur mon téléphone</button>';
@@ -209,6 +242,7 @@ function render(){
   if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
   window.scrollTo(0,0);
   if(S.view==='take')tick();
+  if(S.view==='devoirs')setTimeout(checkUnread,50);
 }
 function setErr(m){S.err=m;S.busy=false;render()}
 
@@ -306,7 +340,7 @@ async function stuGo(){
     go('devoirs');
   }catch(e){setErr(e.message)}
 }
-function stuLogout(){stopChat();store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
+function stuLogout(){stopChat();setBadge(0);store.del('mm_st');store.del('mm_sc');S.stu=null;S.sreg=false;go('slogin')}
 
 /* ---------- Avatars et photos de profil ---------- */
 const AV=['🦁','🐯','🐼','🦊','🐸','🐧','🦄','🐙','🚀','⚽','🎨','💻'];
@@ -355,7 +389,7 @@ function pickPhoto(inp){
 /* ---------- Chat de classe (élève) ---------- */
 function stopChat(){if(S.ch&&S.ch.timer){clearInterval(S.ch.timer);S.ch.timer=null}}
 function openChat(){
-  S.ch={msgs:[],since:0,open:true,reason:'',timer:null,busy:false};S.err='';S.prof=S.prof||{};
+  S.ch={msgs:[],since:0,open:true,reason:'',timer:null,busy:false};S.err='';S.prof=S.prof||{};setBadge(0);
   S.view='chat';render();pollChat();
   S.ch.timer=setInterval(()=>{if(!document.hidden)pollChat()},6000);
 }
@@ -372,6 +406,7 @@ async function pollChat(){
     c.err='';
     // masquer les messages supprimés : si le serveur n'en a plus, on resynchronise régulièrement
     if(!c.sync||Date.now()-c.sync>30000){c.sync=Date.now();const f=await api('/api/chat?since=0');c.msgs=f.messages;c.since=f.messages.reduce((a,m)=>Math.max(a,m.ts),0)}
+    c.msgs.forEach(m=>setSeen(m.ts));
     paintChat(true);loadProfiles();
   }catch(e){c.err=e.message;paintChat(false)}
 }
@@ -411,7 +446,7 @@ async function sendChat(){
   c.busy=true;paintChat(false);
   try{
     const r=await api('/api/chat','POST',{text});
-    c.msgs.push(r.message);c.since=Math.max(c.since,r.message.ts);t.value='';c.err='';
+    c.msgs.push(r.message);c.since=Math.max(c.since,r.message.ts);setSeen(r.message.ts);t.value='';c.err='';
   }catch(e){c.err=e.message}
   c.busy=false;paintChat(true);t.focus();
 }
@@ -452,7 +487,7 @@ function vDevoirs(){
   const L=S.devoirs;
   return `<button class="back" onclick="go('home')">‹ Changer de code</button>
 ${mascot(S.err?'oops':'hello',S.err||('Bonjour '+(S.stu?S.stu.name.split(' ')[0]:'')+' ! Voici les travaux de ta classe.'),96,'small')}
-<p style="margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" onclick="go('profile')" aria-label="Mon profil" style="border:0;background:none;padding:0;cursor:pointer">${avatarH(S.stu,44)}</button><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small primary" onclick="openChat()">Chat</button><button class="btn small" onclick="stuLogout()">Me déconnecter</button></p>
+<p style="margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" onclick="go('profile')" aria-label="Mon profil" style="border:0;background:none;padding:0;cursor:pointer">${avatarH(S.stu,44)}</button><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small primary" onclick="openChat()" aria-label="Chat de la classe" style="position:relative">${MSG_ICON}Chat<span id="chbadge" role="status" style="display:${S.unread>0?'inline-flex':'none'};position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#d4122f;color:#fff;font-size:.78rem;font-weight:700;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box">${S.unread>99?'99+':(S.unread||0)}</span></button><button class="btn small" onclick="stuLogout()">Me déconnecter</button></p>
 <h2>${esc(S.cls.name)}</h2>
 ${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
 ${L.length?L.map((d,i)=>`<div class="card">
