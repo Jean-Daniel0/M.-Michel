@@ -208,6 +208,7 @@ async function initPush(){
       await OneSignal.init({appId:OSAPP,serviceWorkerPath:'/sw.js',serviceWorkerParam:{scope:'/'},notifyButton:{enable:false},allowLocalhostAsSecureOrigin:true});
       osReady=true;window.OneSignal=OneSignal;
       pushIdentify();if(S.view==='devoirs')render();
+      try{OneSignal.User.PushSubscription.addEventListener('change',()=>{if(S.view==='devoirs'){closePushPopup();render()}})}catch(e){}
     });
   }catch(e){}
 }
@@ -220,6 +221,20 @@ function pushState(){
 async function enablePush(){
   try{await window.OneSignal.Notifications.requestPermission();pushIdentify();await window.OneSignal.User.PushSubscription.optIn()}catch(e){}
   render();
+}
+let pushLater=false,pushTries=0;
+function closePushPopup(){const e=document.getElementById('ppop');if(e)e.remove()}
+function laterPush(){pushLater=true;closePushPopup()}
+async function enablePushPopup(){closePushPopup();await enablePush()}
+function showPushPopup(){
+  if(!S.stu||S.view!=='devoirs'||pushLater||document.getElementById('ppop'))return;
+  const st=pushState();if(st!=='ask'&&st!=='denied')return;
+  if(document.getElementById('ipop')){if(pushTries++<4)setTimeout(showPushPopup,4000);return}
+  const den=st==='denied';
+  const d=document.createElement('div');d.id='ppop';d.setAttribute('role','dialog');d.setAttribute('aria-label','Notifications');
+  d.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:51;padding:12px';
+  d.innerHTML=`<div style="max-width:520px;margin:0 auto;background:#fff;color:#12182b;border:1.5px solid #c9d3ea;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:16px"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2rem" aria-hidden="true">🔔</span><div><b>${den?'Notifications bloquées':'Reste informé(e) !'}</b><div style="font-size:.9rem;color:#586078">${den?'Pour être prévenu(e) des nouveaux quiz et messages : touche le cadenas à côté de l\'adresse du site, puis <b>Notifications → Autoriser</b>.':'Reçois une alerte quand ton professeur publie un nouveau quiz ou quand un message arrive dans le chat.'}</div></div></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">${den?'':'<button class="btn small primary" onclick="enablePushPopup()">Activer</button>'}<button class="btn small" onclick="laterPush()">${den?'OK':'Plus tard'}</button></div></div>`;
+  document.body.appendChild(d);
 }
 function vPush(){
   const st=pushState();
@@ -273,7 +288,7 @@ function render(){
   if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
   window.scrollTo(0,0);
   if(S.view==='take')tick();
-  if(S.view==='devoirs')setTimeout(checkUnread,50);
+  if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(showPushPopup,1200)}else closePushPopup();
 }
 function setErr(m){S.err=m;S.busy=false;render()}
 
