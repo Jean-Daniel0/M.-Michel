@@ -721,11 +721,13 @@ const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_
 const OS_APP = process.env.ONESIGNAL_APP_ID || '42d7f370-40da-48eb-954c-4feb568a53b3'; // identifiant public, pas un secret
 const pushOn = () => !!(OS_APP && osKey());
 async function pushToClass(cid, { title, body, exclude, url }) {
-  if (!pushOn()) return;
+  const out = { sent: false, recipients: 0, status: 0, detail: '' };
+  if (!pushOn()) { out.detail = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return out; }
   try {
     const keys = await kv.list('stu:' + cid + ':');
     const ids = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude).map(pk => cid + ':' + pk);
-    if (!ids.length) return;
+    out.recipients = ids.length;
+    if (!ids.length) { out.detail = 'Aucun autre élève inscrit dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
     for (let i = 0; i < ids.length; i += 1500) {
       const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
       const r = await fetch(OS_BASE + '/notifications', {
@@ -739,11 +741,22 @@ async function pushToClass(cid, { title, body, exclude, url }) {
         }),
       });
       clearTimeout(to);
-      if (!r.ok) console.error('OneSignal', r.status, (await r.text()).slice(0, 200));
+      const txt = (await r.text()).slice(0, 400);
+      out.status = r.status; out.detail = txt; out.sent = r.ok;
+      console.log('OneSignal', r.status, 'destinataires:', ids.length, txt.slice(0, 200));
     }
-  } catch (e) { console.error('OneSignal erreur', e.message); }
+  } catch (e) { out.detail = e.message; console.error('OneSignal erreur', e.message); }
+  return out;
 }
 const lastChatPush = new Map();
+app.post('/api/classes/:id/push-test', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase();
+  if (!(await kv.get('class:' + cid))) return fail(res, 404, 'Classe introuvable.');
+  const r = await pushToClass(cid, { title: 'Test M.Michel 🔔', body: 'Si tu lis ceci, les notifications fonctionnent !', url: '/' });
+  let info = '';
+  try { const j = JSON.parse(r.detail); info = j.errors ? JSON.stringify(j.errors) : (j.id ? 'accepté par OneSignal' : ''); } catch (e) { info = r.detail; }
+  res.json({ ...r, info });
+}));
 app.get('/api/config', (req, res) => res.json({ onesignalAppId: pushOn() ? OS_APP : '' }));
 
 app.post('/api/quizzes', auth, wrap(async (req, res) => {

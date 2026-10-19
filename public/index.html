@@ -858,6 +858,8 @@ function vStuds(){
   const t=S.sl;
   return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
 <h2>Élèves inscrits</h2>
+<button class="btn small" onclick="pushTest()">🔔 Envoyer une notification test à la classe</button>
+${S.sl.test?`<p class="hint" style="margin:8px 0">${esc(S.sl.test)}</p>`:''}
 <p class="hint">Un élève qui a oublié son mot de passe : réinitialise-le et donne-lui le nouveau. Supprime un compte en double.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 ${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t.pw.name)}</b> : <span class="code">${esc(t.pw.pw)}</span></p></div>`:''}
@@ -866,6 +868,13 @@ ${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;ga
 ${s.photo||s.avatar!==null?`<button class="btn small" onclick="delPhoto(${i})">Retirer sa photo/avatar</button>`:''}
 <button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
 <button class="btn small danger" onclick="delStu(${i})">Supprimer</button></div>`).join(''):'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
+async function pushTest(){
+  try{
+    const r=await api('/api/classes/'+S.sl.cid+'/push-test','POST');
+    S.sl.test=r.sent?('Envoyée à '+r.recipients+' élève(s). '+(r.info||'')+' Si rien n\'arrive : l\'élève doit avoir touché « Activer les notifications » sur son téléphone.'):('Échec : '+(r.info||r.detail||'raison inconnue'));
+  }catch(e){S.sl.test=e.message}
+  render();
+}
 async function muteStu(i){
   const s=S.sl.list[i];
   try{await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo)+'/mute','POST',{muted:!s.muted});openStuds(S.sl.cid)}catch(e){S.err=e.message;render()}
