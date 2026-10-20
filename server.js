@@ -406,7 +406,7 @@ app.get('/api/chat', sauth, wrap(async (req, res) => {
   const st = await chatState(req.st);
   const since = parseInt(req.query.since) || 0;
   const list = (await kv.get(chatKey(req.st.cid))) || [];
-  res.json({ ...st, messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
+  res.json({ ...st, now: Date.now(), messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
 }));
 app.get('/api/chat/unread', sauth, wrap(async (req, res) => {
   const since = parseInt(req.query.since) || 0;
