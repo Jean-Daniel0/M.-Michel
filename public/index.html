@@ -517,8 +517,9 @@ function vChat(){
   const c=S.ch;
   return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
 <h2>Chat · ${esc(S.cls.name)}</h2>
-<div id="chwrap" style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin:0 0 14px;background:#222 var(--bgimg) center/cover no-repeat;--bm:38,60,120;--bo:60,80,110">
-<div id="chfade" aria-hidden="true" style="position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity 1.6s ease;pointer-events:none;z-index:1"></div>
+<div id="chwrap" style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin:0 0 14px;background:#222;--bm:38,60,120;--bo:60,80,110">
+<div id="chbg" aria-hidden="true" style="position:absolute;inset:-6px;background:var(--bgimg) center/cover no-repeat;filter:blur(1.5px);z-index:0"></div>
+<div id="chfade" aria-hidden="true" style="position:absolute;inset:-6px;background-size:cover;background-position:center;filter:blur(1.5px);opacity:0;transition:opacity 1.6s ease;pointer-events:none;z-index:1"></div>
 <div id="chmsgs" style="position:relative;z-index:2;height:60vh;min-height:260px;overflow-y:auto;padding:14px 12px;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.30))"></div></div>
 <p id="chinfo" class="err" role="status" style="display:none"></p>
 <div id="chform" style="display:flex;gap:8px"><input type="text" id="chtxt" maxlength="300" placeholder="Écris un message…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" onclick="sendChat()" style="width:auto;flex:none">Envoyer</button></div>
