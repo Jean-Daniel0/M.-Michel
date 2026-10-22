@@ -197,20 +197,38 @@ function vInstall(){
   return '';
 }
 /* ---------- Notifications (OneSignal) ---------- */
-let OSAPP='',osReady=false;
+let OSAPP='',osReady=false,pushErr='';
 window.OneSignalDeferred=window.OneSignalDeferred||[];
+/* Migration (une seule fois) : l'ancien abonnement était rattaché au worker du site ; on repart proprement avec le worker dédié. */
+async function migratePush(){
+  if(store.get('mm_os_mig')==='v2')return;
+  try{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      for(const r of regs){if(new URL(r.scope).pathname==='/'&&r.pushManager){const sub=await r.pushManager.getSubscription();if(sub)await sub.unsubscribe()}}
+    }
+    await new Promise(res=>{try{const q=indexedDB.deleteDatabase('ONE_SIGNAL_SDK_DB');q.onsuccess=q.onerror=q.onblocked=()=>res();setTimeout(res,1500)}catch(e){res()}});
+  }catch(e){}
+  store.set('mm_os_mig','v2');
+}
 async function initPush(){
   try{
     const r=await fetch('/api/config');const j=await r.json();OSAPP=j.onesignalAppId||'';
     if(!OSAPP)return;
-    const sc=document.createElement('script');sc.src='https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';sc.defer=true;document.head.appendChild(sc);
+    await migratePush();
+    const sc=document.createElement('script');sc.src='https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';sc.defer=true;
+    sc.onerror=()=>{pushErr="Le module de notifications n'a pas pu être chargé (réseau, économiseur de données ou bloqueur de publicités)."};
+    document.head.appendChild(sc);
     OneSignalDeferred.push(async function(OneSignal){
-      await OneSignal.init({appId:OSAPP,serviceWorkerPath:'/sw.js',serviceWorkerParam:{scope:'/'},notifyButton:{enable:false},allowLocalhostAsSecureOrigin:true});
-      osReady=true;window.OneSignal=OneSignal;
-      pushIdentify();if(S.view==='devoirs')render();
-      try{OneSignal.User.PushSubscription.addEventListener('change',()=>{if(S.view==='devoirs'){closePushPopup();render()}})}catch(e){}
+      try{
+        // worker dédié, dans son propre dossier : il ne se marche plus dessus avec le worker du site
+        await OneSignal.init({appId:OSAPP,serviceWorkerPath:'push/onesignal/OneSignalSDKWorker.js',serviceWorkerParam:{scope:'/push/onesignal/'},notifyButton:{enable:false},allowLocalhostAsSecureOrigin:true});
+        osReady=true;window.OneSignal=OneSignal;
+        pushIdentify();if(S.view==='devoirs')render();
+        try{OneSignal.User.PushSubscription.addEventListener('change',()=>{pushIdentify();if(S.view==='devoirs'){closePushPopup();render()}})}catch(e){}
+      }catch(e){pushErr='Initialisation refusée : '+(e&&e.message?e.message:e)}
     });
-  }catch(e){}
+  }catch(e){pushErr='Configuration indisponible : '+(e&&e.message?e.message:e)}
 }
 function pushIdentify(){
   try{
@@ -244,12 +262,30 @@ function showPushPopup(){
   d.innerHTML=`<div style="max-width:520px;margin:0 auto;background:#fff;color:#12182b;border:1.5px solid #c9d3ea;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:16px"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2rem" aria-hidden="true">🔔</span><div><b>${den?'Notifications bloquées':'Reste informé(e) !'}</b><div style="font-size:.9rem;color:#586078">${den?'Pour être prévenu(e) des nouveaux quiz et messages : touche le cadenas à côté de l\'adresse du site, puis <b>Notifications → Autoriser</b>.':'Reçois une alerte quand ton professeur publie un nouveau quiz ou quand un message arrive dans le chat.'}</div></div></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">${den?'':'<button class="btn small primary" onclick="enablePushPopup()">Activer</button>'}<button class="btn small" onclick="laterPush()">${den?'OK':'Plus tard'}</button></div></div>`;
   document.body.appendChild(d);
 }
+async function pushDiag(){
+  const L=[];
+  L.push('Module OneSignal : '+(osReady?'chargé ✓':'NON chargé ✗'));
+  if(pushErr)L.push('Erreur : '+pushErr);
+  L.push('Compte : '+(S.stu?S.code+' / '+S.stu.pseudo:'non connecté'));
+  try{L.push('Permission du navigateur : '+('Notification' in window?Notification.permission:'non prise en charge'))}catch(e){}
+  try{
+    if(osReady){
+      const ps=window.OneSignal.User.PushSubscription;
+      L.push('Abonnement actif : '+(ps.optedIn?'oui ✓':'NON ✗'));
+      L.push('Identifiant d\'abonnement : '+(ps.id?String(ps.id).slice(0,8)+'…':'aucun ✗'));
+      L.push('Jeton push : '+(ps.token?'présent ✓':'absent ✗'));
+    }
+  }catch(e){L.push('Lecture de l\'abonnement impossible : '+e.message)}
+  try{const rs=await navigator.serviceWorker.getRegistrations();L.push('Workers : '+(rs.map(r=>new URL(r.scope).pathname+(r.active?'(actif)':'(inactif)')).join(' ; ')||'aucun'))}catch(e){}
+  L.push('Installé en application : '+(isStandalone()?'oui':'non'));
+  alert(L.join('\n'));
+}
 function vPush(){
   const st=pushState();
   if(st==='ask')return '<button class="btn small" onclick="enablePush()">🔔 Activer les notifications</button>';
-  if(st==='on')return '<span class="tag ok">🔔 Notifications activées</span>';
-  if(st==='denied')return '<span class="tag warn">🔕 Notifications bloquées</span>';
-  return '';
+  if(st==='on')return '<span class="tag ok">🔔 Notifications activées</span> <a href="#" onclick="pushDiag();return false" style="font-size:.85rem">État</a>';
+  if(st==='denied')return '<span class="tag warn">🔕 Notifications bloquées</span> <a href="#" onclick="pushDiag();return false" style="font-size:.85rem">État</a>';
+  return OSAPP?'<a href="#" onclick="pushDiag();return false" style="font-size:.85rem">🔕 Notifications indisponibles : voir l\'état</a>':'';
 }
 window.addEventListener('load',()=>setTimeout(initPush,500));
 /* ---------- Réseau ---------- */
@@ -926,7 +962,8 @@ function vStuds(){
   return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
 <h2>Élèves inscrits</h2>
 <button class="btn small" onclick="pushTest()">🔔 Envoyer une notification test à la classe</button>
-${S.sl.test?`<p class="hint" style="margin:8px 0">${esc(S.sl.test)}</p>`:''}
+<button class="btn small" onclick="pushDiagT()">🩺 Diagnostic des notifications</button>
+${S.sl.test?`<p class="hint" style="margin:8px 0;white-space:pre-wrap">${esc(S.sl.test)}</p>`:''}
 <p class="hint">Un élève qui a oublié son mot de passe : réinitialise-le et donne-lui le nouveau. Supprime un compte en double.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 ${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t.pw.name)}</b> : <span class="code">${esc(t.pw.pw)}</span></p></div>`:''}
@@ -935,6 +972,16 @@ ${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;ga
 ${s.photo||s.avatar!==null?`<button class="btn small" onclick="delPhoto(${i})">Retirer sa photo/avatar</button>`:''}
 <button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
 <button class="btn small danger" onclick="delStu(${i})">Supprimer</button></div>`).join(''):'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
+async function pushDiagT(){
+  try{
+    const r=await api('/api/classes/'+S.sl.cid+'/push-diag');
+    let t='';
+    if(r.error)t='Problème : '+r.error;
+    else t='OneSignal : '+r.devices+' appareil(s) connu(s), dont '+r.subscribed+' abonné(s). Appareils portant au moins un élève de cette classe : '+r.tagged+' (abonnés : '+r.taggedSubscribed+').\n'+r.students.map(s=>s.pseudo+' → '+(s.subscribed?'prêt ✓':(s.tagged?'appareil vu mais non abonné ✗':'jamais connecté sur un appareil ✗'))).join(' · ');
+    S.sl.test=t;
+  }catch(e){S.sl.test=e.message}
+  render();
+}
 async function pushTest(){
   try{
     const r=await api('/api/classes/'+S.sl.cid+'/push-test','POST');

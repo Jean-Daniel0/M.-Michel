@@ -730,9 +730,9 @@ async function pushToClass(cid, { title, body, exclude, url }) {
     out.recipients = pks.length;
     if (!pks.length) { out.detail = 'Aucun élève à notifier dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
     // Ciblage par étiquette d'appareil : un même téléphone peut porter plusieurs comptes élèves.
-    for (let i = 0; i < pks.length; i += 100) {
+    for (let i = 0; i < pks.length; i += 50) {
       const filters = [];
-      pks.slice(i, i + 100).forEach((pk, n) => { if (n) filters.push({ operator: 'OR' }); filters.push({ field: 'tag', key: tagOf(cid, pk), relation: '=', value: '1' }); });
+      pks.slice(i, i + 50).forEach((pk, n) => { if (n) filters.push({ operator: 'OR' }); filters.push({ field: 'tag', key: tagOf(cid, pk), relation: '=', value: '1' }); });
       const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 8000);
       const r = await fetch(OS_BASE + '/notifications', {
         method: 'POST', signal: ctl.signal,
@@ -745,8 +745,9 @@ async function pushToClass(cid, { title, body, exclude, url }) {
       });
       clearTimeout(to);
       const txt = (await r.text()).slice(0, 400);
-      out.status = r.status; out.detail = txt; out.sent = r.ok;
-      console.log('OneSignal', r.status, 'élèves visés:', Math.min(100, pks.length - i), txt.slice(0, 200));
+      let okId = false; try { okId = !!JSON.parse(txt).id; } catch (e) { /* texte non JSON */ }
+      out.status = r.status; out.detail = txt; out.sent = r.ok && okId;
+      console.log('OneSignal', r.status, 'élèves visés:', Math.min(50, pks.length - i), txt.slice(0, 200));
     }
   } catch (e) { out.detail = e.message; console.error('OneSignal erreur', e.message); }
   return out;
@@ -757,8 +758,38 @@ app.post('/api/classes/:id/push-test', auth, wrap(async (req, res) => {
   if (!(await kv.get('class:' + cid))) return fail(res, 404, 'Classe introuvable.');
   const r = await pushToClass(cid, { title: 'Test M.Michel 🔔', body: 'Si tu lis ceci, les notifications fonctionnent !', url: '/' });
   let info = '';
-  try { const j = JSON.parse(r.detail); info = j.errors ? JSON.stringify(j.errors) : (j.id ? 'accepté par OneSignal' : ''); } catch (e) { info = r.detail; }
+  try {
+    const j = JSON.parse(r.detail);
+    if (j.id) info = 'accepté par OneSignal (' + (j.recipients != null ? j.recipients + ' appareil(s)' : 'envoi lancé') + ')';
+    else if (j.errors) info = 'Aucun appareil abonné ne porte l\'étiquette d\'un élève de cette classe. Chaque élève doit se connecter sur son téléphone après avoir autorisé les notifications. (' + JSON.stringify(j.errors).slice(0, 120) + ')';
+  } catch (e) { info = r.detail; }
   res.json({ ...r, info });
+}));
+app.get('/api/classes/:id/push-diag', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase();
+  const out = { keyOk: pushOn(), appId: OS_APP.slice(0, 8) + '…', devices: null, subscribed: null, tagged: 0, taggedSubscribed: 0, students: [], error: '' };
+  const pks = (await kv.list('stu:' + cid + ':')).map(k => k.slice(('stu:' + cid + ':').length));
+  if (!pushOn()) { out.error = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return res.json(out); }
+  try {
+    // liste des appareils connus de OneSignal (300 derniers)
+    let r = await fetch(OS_BASE + '/players?app_id=' + encodeURIComponent(OS_APP) + '&limit=300', { headers: { Authorization: 'Key ' + osKey() } });
+    if (r.status === 401 || r.status === 403) r = await fetch(OS_BASE + '/players?app_id=' + encodeURIComponent(OS_APP) + '&limit=300', { headers: { Authorization: 'Basic ' + osKey() } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { out.error = 'OneSignal a répondu ' + r.status + ' : ' + JSON.stringify(j).slice(0, 200); return res.json(out); }
+    const pl = Array.isArray(j.players) ? j.players : [];
+    out.devices = pl.length;
+    const sub = p => p.notification_types === 1 || (p.invalid_identifier === false && p.notification_types > 0);
+    out.subscribed = pl.filter(sub).length;
+    const per = new Map(pks.map(pk => [pk, { pseudo: pk, tagged: 0, subscribed: 0 }]));
+    for (const p of pl) {
+      const tags = p.tags || {};
+      let any = false;
+      for (const pk of pks) if (tags[tagOf(cid, pk)] === '1') { const e = per.get(pk); e.tagged++; if (sub(p)) e.subscribed++; any = true; }
+      if (any) { out.tagged++; if (sub(p)) out.taggedSubscribed++; }
+    }
+    out.students = [...per.values()];
+  } catch (e) { out.error = e.message; }
+  res.json(out);
 }));
 app.get('/api/config', (req, res) => res.json({ onesignalAppId: pushOn() ? OS_APP : '' }));
 
