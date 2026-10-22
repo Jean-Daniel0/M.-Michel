@@ -150,7 +150,9 @@ ul.rules li{margin:.4em 0}
 <script src="/avatar.js"></script>
 <script>
 /* ---------- PWA : installation ---------- */
-if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+/* Un seul worker : /OneSignalSDKWorker.js (notifications + cache). OneSignal l'enregistre lui-même ; si le module de
+   notifications n'a pas démarré après 8 s, on l'enregistre nous-mêmes pour garder l'installation de l'application. */
+if('serviceWorker' in navigator)window.addEventListener('load',()=>setTimeout(()=>{if(!osReady)navigator.serviceWorker.register('/OneSignalSDKWorker.js',{scope:'/'}).catch(()=>{})},8000));
 let installEv=null;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEv=e;if(S.view==='home')render();setTimeout(showInstallPopup,2500)});
 window.addEventListener('appinstalled',()=>{installEv=null;closeInstallPopup();if(S.view==='home')render()});
@@ -201,7 +203,7 @@ let OSAPP='',osReady=false,pushErr='';
 window.OneSignalDeferred=window.OneSignalDeferred||[];
 /* Migration (une seule fois) : l'ancien abonnement était rattaché au worker du site ; on repart proprement avec le worker dédié. */
 async function migratePush(){
-  if(store.get('mm_os_mig')==='v2')return;
+  if(store.get('mm_os_mig')==='v3')return;
   try{
     if('serviceWorker' in navigator){
       const regs=await navigator.serviceWorker.getRegistrations();
@@ -209,7 +211,7 @@ async function migratePush(){
     }
     await new Promise(res=>{try{const q=indexedDB.deleteDatabase('ONE_SIGNAL_SDK_DB');q.onsuccess=q.onerror=q.onblocked=()=>res();setTimeout(res,1500)}catch(e){res()}});
   }catch(e){}
-  store.set('mm_os_mig','v2');
+  store.set('mm_os_mig','v3');
 }
 async function initPush(){
   try{
@@ -221,8 +223,7 @@ async function initPush(){
     document.head.appendChild(sc);
     OneSignalDeferred.push(async function(OneSignal){
       try{
-        // worker dédié, dans son propre dossier : il ne se marche plus dessus avec le worker du site
-        await OneSignal.init({appId:OSAPP,serviceWorkerPath:'push/onesignal/OneSignalSDKWorker.js',serviceWorkerParam:{scope:'/push/onesignal/'},notifyButton:{enable:false},allowLocalhostAsSecureOrigin:true});
+        await OneSignal.init({appId:OSAPP,notifyButton:{enable:false},allowLocalhostAsSecureOrigin:true});
         osReady=true;window.OneSignal=OneSignal;
         pushIdentify();if(S.view==='devoirs')render();
         try{OneSignal.User.PushSubscription.addEventListener('change',()=>{pushIdentify();if(S.view==='devoirs'){closePushPopup();render()}})}catch(e){}
