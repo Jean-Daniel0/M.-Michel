@@ -403,7 +403,11 @@ function enterTeacher(){S.view='thome';S.classes=null;render();loadClasses()}
 /* ---------- Élève : compte (pseudo + mot de passe) ---------- */
 async function loadMe(){
   try{const r=await api('/api/student/me');S.stu=r.student;S.devoirs=r.devoirs;S.cls=r.class;return true}
-  catch(e){store.del('mm_st');S.stu=null;return false}
+  catch(e){
+    // on ne supprime la connexion que si le serveur la refuse ; une simple coupure réseau ne déconnecte personne
+    if(e.status===401){store.del('mm_st');S.stu=null}
+    S.loadErr=e;return false
+  }
 }
 function vSLogin(){
   const reg=S.sreg;
@@ -1201,6 +1205,13 @@ async function allowRetry(){
 (async function boot(){
   if(store.get('mm_token')){
     try{await api('/api/me');S.token=true;return enterTeacher()}catch(e){if(e.status===401)S.token=false}
+  }
+  // élève déjà connecté sur cet appareil : on rouvre directement la liste de sa classe, sans redemander le code
+  const sc=store.get('mm_sc');
+  if(store.get('mm_st')&&sc){
+    app().innerHTML='<p class="muted" style="padding:40px 0;text-align:center">Chargement…</p>';
+    if(await loadMe()){S.code=sc;S.sreg=false;pushIdentify();return go('devoirs')}
+    if(S.loadErr&&S.loadErr.status!==401)S.err='Pas de connexion. Vérifie ton réseau puis réessaie.';
   }
   render();
 })();
