@@ -431,8 +431,7 @@ app.post('/api/chat', sauth, wrap(async (req, res) => {
     await kv.set(chatKey(req.st.cid), list.slice(-150));
   });
   res.json({ message: pubMsg(m, req.st.pk) });
-  const lp = lastChatPush.get(req.st.cid) || 0;
-  if (now - lp > 60000) { lastChatPush.set(req.st.cid, now); pushToClass(req.st.cid, { title: 'Nouveau message 💬', body: 'Il y a du nouveau dans le chat de ta classe.', exclude: req.st.pk, url: '/' }); }
+  notifyChat(req.st, m);
 }));
 app.post('/api/chat/report', sauth, wrap(async (req, res) => {
   const id = str(req.body.id, 40);
@@ -507,6 +506,7 @@ app.post('/api/start', sauth, wrap(async (req, res) => {
     return { qi, map };
   });
   const now = Date.now();
+  qtCache.delete(classId);
   att = { id, name, key, pseudo: req.st.pseudo, token: crypto.randomBytes(18).toString('base64url'), startedAt: now, qStart: now, endsAt: quiz.minutes > 0 ? now + quiz.minutes * 60000 : null, order, answers: [], flags: { paste: 0, leave: 0, leaveMs: 0, jump: 0 }, finished: false };
   await kv.set(attKey(id, key), att);
   res.json({ token: att.token, state: state(att, quiz) });
@@ -721,12 +721,12 @@ const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_
 const OS_APP = process.env.ONESIGNAL_APP_ID || '42d7f370-40da-48eb-954c-4feb568a53b3'; // identifiant public, pas un secret
 const pushOn = () => !!(OS_APP && osKey());
 const tagOf = (cid, pk) => 'u_' + cid + '_' + pk;
-async function pushToClass(cid, { title, body, exclude, url }) {
+async function pushToClass(cid, { title, body, exclude, excludeSet, url, topic }) {
   const out = { sent: false, recipients: 0, status: 0, detail: '' };
   if (!pushOn()) { out.detail = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return out; }
   try {
     const keys = await kv.list('stu:' + cid + ':');
-    const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude);
+    const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude && !(excludeSet && excludeSet.has(pk)));
     out.recipients = pks.length;
     if (!pks.length) { out.detail = 'Aucun élève à notifier dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
     // Ciblage par étiquette d'appareil : un même téléphone peut porter plusieurs comptes élèves.
@@ -741,6 +741,8 @@ async function pushToClass(cid, { title, body, exclude, url }) {
           app_id: OS_APP, target_channel: 'push', filters,
           headings: { fr: title, en: title }, contents: { fr: body, en: body },
           url: url || '/', ttl: 86400 * 2,
+          priority: 10, // haute priorité : livraison immédiate même quand le téléphone est en veille
+          ...(topic ? { web_push_topic: topic } : {}),
         }),
       });
       clearTimeout(to);
@@ -752,7 +754,32 @@ async function pushToClass(cid, { title, body, exclude, url }) {
   } catch (e) { out.detail = e.message; console.error('OneSignal erreur', e.message); }
   return out;
 }
-const lastChatPush = new Map();
+const chatAgg = new Map(); // classe -> { n, t } : messages récents regroupés dans une même notification
+const qtCache = new Map();
+async function activeQuizTakers(cid) {
+  const c = qtCache.get(cid);
+  if (c && Date.now() - c.t < 30000) return c.set;
+  const set = new Set();
+  try {
+    for (const q of await gradedQuizzes(cid)) for (const k of await kv.list('att:' + q.id + ':')) {
+      const a = await kv.get(k);
+      if (a && !a.finished && typeof a.key === 'string' && a.key.startsWith('u_')) set.add(a.key.slice(2));
+    }
+  } catch (e) { /* tant pis : on notifie tout le monde */ }
+  qtCache.set(cid, { t: Date.now(), set });
+  return set;
+}
+async function notifyChat(st, m) {
+  try {
+    const now = Date.now(), cur = chatAgg.get(st.cid);
+    const agg = cur && now - cur.t < 10 * 60000 ? { n: cur.n + 1, t: now } : { n: 1, t: now };
+    chatAgg.set(st.cid, agg);
+    const snippet = m.text.length > 90 ? m.text.slice(0, 87) + '…' : m.text;
+    const title = agg.n > 1 ? '💬 ' + agg.n + ' nouveaux messages' : '💬 ' + st.name;
+    const body = agg.n > 1 ? st.name + ' : ' + snippet : snippet;
+    await pushToClass(st.cid, { title, body, exclude: st.pk, excludeSet: await activeQuizTakers(st.cid), url: '/', topic: 'chat-' + st.cid });
+  } catch (e) { console.error('notifyChat', e.message); }
+}
 app.post('/api/classes/:id/push-test', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase();
   if (!(await kv.get('class:' + cid))) return fail(res, 404, 'Classe introuvable.');
