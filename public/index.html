@@ -563,6 +563,7 @@ function vChat(){
 <div id="chfade" aria-hidden="true" style="position:absolute;inset:-6px;background-size:cover;background-position:center;filter:blur(1.5px);opacity:0;transition:opacity 1.6s ease;pointer-events:none;z-index:1"></div>
 <div id="chmsgs" style="position:relative;z-index:2;height:60vh;min-height:260px;overflow-y:auto;padding:14px 12px;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.30))"></div></div>
 <p id="chinfo" class="err" role="status" style="display:none"></p>
+<div id="chrep" style="display:none;align-items:center;gap:8px;margin:0 0 8px;padding:7px 10px;border-radius:10px;border-left:4px solid #5b8def;background:var(--card,rgba(120,140,180,.15));font-size:.85rem"></div>
 <div id="chform" style="display:flex;gap:8px"><input type="text" id="chtxt" maxlength="300" placeholder="Écris un message…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" onclick="sendChat()" style="width:auto;flex:none">Envoyer</button></div>
 <p class="hint" id="chnote"></p>`}
 function paintChat(stick){
@@ -570,7 +571,8 @@ function paintChat(stick){
   applyChatBg();
   const box=document.getElementById('chmsgs');if(!box)return;
   const near=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-  box.innerHTML=c.msgs.length?c.msgs.map(m=>{const p=S.prof[m.pk]||{name:m.name};return `<div style="display:flex;gap:8px;margin:0 0 12px;${m.mine?'flex-direction:row-reverse':''}">${avatarH(Object.assign({},p,{name:m.name}),34)}<div style="max-width:78%;background:rgba(${m.mine?'var(--bm)':'var(--bo)'},.93);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:${m.mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><b style="font-size:.82rem;color:#fff">${esc(m.name)}</b><div style="white-space:pre-wrap;word-break:break-word;color:#fff">${esc(m.text)}</div><small style="color:#d6e2ff">${new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${m.mine?'':` · ${m.reported?'Signalé ✓':`<a href="#" style="color:#fff;text-decoration:underline" onclick="reportMsg('${esc(m.id)}');return false">Signaler</a>`}`}</small></div></div>`}).join(''):'<p style="margin:0;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.7)">Aucun message pour le moment. Dis bonjour !</p>';
+  box.innerHTML=c.msgs.length?c.msgs.map(m=>{const p=S.prof[m.pk]||{name:m.name};const q=m.reply?`<div onclick="jumpMsg('${esc(m.reply.id)}')" style="cursor:pointer;margin:2px 0 5px;padding:4px 8px;border-left:3px solid #fff;border-radius:6px;background:rgba(255,255,255,.16);font-size:.78rem;line-height:1.25"><b>${esc(m.reply.name)}</b><div style="opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.reply.text)}</div></div>`:'';return `<div class="chrow" id="m-${esc(m.id)}" data-id="${esc(m.id)}" style="display:flex;align-items:center;gap:8px;margin:0 0 12px;${m.mine?'flex-direction:row-reverse':''}">${avatarH(Object.assign({},p,{name:m.name}),34)}<div class="chb" style="max-width:78%;background:rgba(${m.mine?'var(--bm)':'var(--bo)'},.93);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:${m.mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><b style="font-size:.82rem;color:#fff">${esc(m.name)}</b>${q}<div style="white-space:pre-wrap;word-break:break-word;color:#fff">${esc(m.text)}</div><small style="color:#d6e2ff">${new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${m.mine?'':` · ${m.reported?'Signalé ✓':`<a href="#" style="color:#fff;text-decoration:underline" onclick="reportMsg('${esc(m.id)}');return false">Signaler</a>`}`}</small></div><button type="button" aria-label="Répondre" title="Répondre" onclick="setReply('${esc(m.id)}')" style="flex:none;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:1rem;line-height:1;cursor:pointer">↩</button></div>`}).join(''):'<p style="margin:0;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.7)">Aucun message pour le moment. Dis bonjour !</p>';
+  bindSwipe(box);paintReply();
   if(stick||near)box.scrollTop=box.scrollHeight;
   const inf=document.getElementById('chinfo');
   const msg=c.err||(!c.open?c.reason:'');
@@ -578,12 +580,39 @@ function paintChat(stick){
   const t=document.getElementById('chtxt'),b=document.getElementById('chbtn');
   if(t)t.disabled=!c.open;if(b)b.disabled=!c.open||c.busy;
 }
+function setReply(id){
+  const c=S.ch,m=c&&c.msgs.find(x=>x.id===id);if(!m)return;
+  c.replyTo=id;paintReply();const t=document.getElementById('chtxt');if(t)t.focus();
+}
+function paintReply(){
+  const c=S.ch,b=document.getElementById('chrep');if(!b||!c)return;
+  const m=c.replyTo&&c.msgs.find(x=>x.id===c.replyTo);
+  if(!m){b.style.display='none';c.replyTo=null;return}
+  b.style.display='flex';
+  b.innerHTML=`<div style="flex:1;min-width:0"><b>↩ Réponse à ${esc(m.name)}</b><div style="opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.text)}</div></div><button type="button" aria-label="Annuler la réponse" onclick="S.ch.replyTo=null;paintReply()" style="border:0;background:none;font-size:1.2rem;cursor:pointer;color:inherit">✕</button>`;
+}
+function jumpMsg(id){
+  const e=document.getElementById('m-'+id);if(!e)return;
+  e.scrollIntoView({block:'center',behavior:'smooth'});
+  const b=e.querySelector('.chb');if(b){b.style.transition='box-shadow .3s';b.style.boxShadow='0 0 0 3px #fff, 0 2px 10px rgba(0,0,0,.35)';setTimeout(()=>{b.style.boxShadow='0 2px 10px rgba(0,0,0,.35)'},1200)}
+}
+function bindSwipe(box){
+  if(box._sw)return;box._sw=1;let row=null,x0=0,y0=0,dx=0,on=false;
+  box.addEventListener('touchstart',e=>{row=e.target.closest&&e.target.closest('.chrow');if(!row||e.touches.length!==1){row=null;return}x0=e.touches[0].clientX;y0=e.touches[0].clientY;dx=0;on=false},{passive:true});
+  box.addEventListener('touchmove',e=>{
+    if(!row)return;const t=e.touches[0],mx=t.clientX-x0,my=t.clientY-y0;
+    if(!on){if(Math.abs(my)>12&&Math.abs(my)>Math.abs(mx)){row=null;return}if(mx>10&&mx>Math.abs(my)*1.5)on=true;else return}
+    dx=Math.max(0,Math.min(mx,90));row.style.transition='none';row.style.transform='translateX('+dx+'px)';
+  },{passive:true});
+  const end=()=>{if(!row)return;const r=row,go=on&&dx>=60;r.style.transition='transform .18s';r.style.transform='';row=null;on=false;if(go){if(navigator.vibrate)try{navigator.vibrate(15)}catch(e){}setReply(r.dataset.id)}};
+  box.addEventListener('touchend',end);box.addEventListener('touchcancel',end);
+}
 async function sendChat(){
   const c=S.ch,t=document.getElementById('chtxt');if(!c||!t)return;
   const text=t.value.trim();if(!text)return;
   c.busy=true;paintChat(false);
   try{
-    const r=await api('/api/chat','POST',{text});
+    const r=await api('/api/chat','POST',{text,replyTo:c.replyTo||undefined});c.replyTo=null;
     c.msgs.push(r.message);c.since=Math.max(c.since,r.message.ts);setSeen(r.message.ts);t.value='';c.err='';
   }catch(e){c.err=e.message}
   c.busy=false;paintChat(true);t.focus();

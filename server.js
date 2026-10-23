@@ -401,7 +401,7 @@ async function chatState(st) {
   if (await inQuiz(st.cid, st.sid)) return { open: false, reason: 'Le chat est bloqué pendant un quiz.' };
   return { open: true };
 }
-const pubMsg = (m, me) => ({ id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, pv: m.pv || 0, mine: m.pk === me, reported: (m.reports || []).includes(me) });
+const pubMsg = (m, me) => ({ id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, pv: m.pv || 0, reply: m.reply || null, mine: m.pk === me, reported: (m.reports || []).includes(me) });
 app.get('/api/chat', sauth, wrap(async (req, res) => {
   const st = await chatState(req.st);
   const since = parseInt(req.query.since) || 0;
@@ -425,8 +425,11 @@ app.post('/api/chat', sauth, wrap(async (req, res) => {
   if (!text) return fail(res, 400, 'Écris un message.');
   rec.push(now); sendLog.set(k, rec); if (sendLog.size > 5000) sendLog.clear();
   const m = { id: now.toString(36) + crypto.randomBytes(3).toString('hex'), pk: req.st.pk, name: req.st.name, text: cleanText(text), ts: now, pv: req.st.rec.pv || 0 };
+  const replyId = str(req.body.replyTo, 40);
   await withChat(req.st.cid, async () => {
     const list = (await kv.get(chatKey(req.st.cid))) || [];
+    const o = replyId && list.find(x => x.id === replyId);
+    if (o) m.reply = { id: o.id, pk: o.pk, name: o.name, text: o.text.length > 80 ? o.text.slice(0, 77) + '…' : o.text };
     list.push(m);
     await kv.set(chatKey(req.st.cid), list.slice(-150));
   });
@@ -720,13 +723,15 @@ const OS_BASE = process.env.ONESIGNAL_BASE_URL || 'https://api.onesignal.com';
 const osKey = () => process.env.ONESIGNAL_REST_API_KEY || process.env.ONESIGNAL_API_KEY || '';
 const OS_APP = process.env.ONESIGNAL_APP_ID || '42d7f370-40da-48eb-954c-4feb568a53b3'; // identifiant public, pas un secret
 const pushOn = () => !!(OS_APP && osKey());
+const SITE = (process.env.RENDER_EXTERNAL_URL || 'https://m-michel.onrender.com').replace(/\/$/, '');
+const PUSH_ICON = SITE + '/icon-192.png', PUSH_BADGE = SITE + '/badge.png';
 const tagOf = (cid, pk) => 'u_' + cid + '_' + pk;
-async function pushToClass(cid, { title, body, exclude, excludeSet, url, topic }) {
+async function pushToClass(cid, { title, body, exclude, excludeSet, only, url, topic }) {
   const out = { sent: false, recipients: 0, status: 0, detail: '' };
   if (!pushOn()) { out.detail = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return out; }
   try {
     const keys = await kv.list('stu:' + cid + ':');
-    const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude && !(excludeSet && excludeSet.has(pk)));
+    const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude && !(excludeSet && excludeSet.has(pk)) && (!only || only.includes(pk)));
     out.recipients = pks.length;
     if (!pks.length) { out.detail = 'Aucun élève à notifier dans cette classe.'; console.log('OneSignal : aucun destinataire pour', cid); return out; }
     // Ciblage par étiquette d'appareil : un même téléphone peut porter plusieurs comptes élèves.
@@ -741,6 +746,7 @@ async function pushToClass(cid, { title, body, exclude, excludeSet, url, topic }
           app_id: OS_APP, target_channel: 'push', filters,
           headings: { fr: title, en: title }, contents: { fr: body, en: body },
           url: url || '/', ttl: 86400 * 2,
+          chrome_web_icon: PUSH_ICON, chrome_web_badge: PUSH_BADGE, // logo + petite icône blanche de la barre d'état (la « pastille »)
           priority: 10, // haute priorité : livraison immédiate même quand le téléphone est en veille
           ...(topic ? { web_push_topic: topic } : {}),
         }),
@@ -771,13 +777,19 @@ async function activeQuizTakers(cid) {
 }
 async function notifyChat(st, m) {
   try {
+    const rp = m.reply && m.reply.pk !== st.pk ? m.reply.pk : null;
+    const busy = await activeQuizTakers(st.cid);
+    if (rp && !busy.has(rp)) {
+      const sn = m.text.length > 90 ? m.text.slice(0, 87) + '…' : m.text;
+      await pushToClass(st.cid, { title: '↩️ ' + st.name + ' t\'a répondu', body: sn, only: [rp], url: '/', topic: 'rep-' + st.cid + '-' + rp });
+    }
     const now = Date.now(), cur = chatAgg.get(st.cid);
     const agg = cur && now - cur.t < 10 * 60000 ? { n: cur.n + 1, t: now } : { n: 1, t: now };
     chatAgg.set(st.cid, agg);
     const snippet = m.text.length > 90 ? m.text.slice(0, 87) + '…' : m.text;
     const title = agg.n > 1 ? '💬 ' + agg.n + ' nouveaux messages' : '💬 ' + st.name;
     const body = agg.n > 1 ? st.name + ' : ' + snippet : snippet;
-    await pushToClass(st.cid, { title, body, exclude: st.pk, excludeSet: await activeQuizTakers(st.cid), url: '/', topic: 'chat-' + st.cid });
+    await pushToClass(st.cid, { title, body, exclude: st.pk, excludeSet: rp ? new Set([...busy, rp]) : busy, url: '/', topic: 'chat-' + st.cid });
   } catch (e) { console.error('notifyChat', e.message); }
 }
 app.post('/api/classes/:id/push-test', auth, wrap(async (req, res) => {
