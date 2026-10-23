@@ -42,6 +42,21 @@ h3{font-size:1.1rem}
 .paper::-moz-selection,.paper *::-moz-selection{background:#abe1f7}
 .paper span[style*="#ffffff"]::selection,.paper span[style*="#ffffff"] *::selection{background:#abe1f7;color:#abe1f7;text-shadow:none}
 .paper span[style*="#ffffff"]::-moz-selection,.paper span[style*="#ffffff"] *::-moz-selection{background:#abe1f7;color:#abe1f7;text-shadow:none}
+.chatmode{overflow:hidden}
+.chatmode #app{max-width:none;padding:0;margin:0}
+#chpage{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:#111;height:100vh;height:100dvh}
+.chtop{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 4px;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.3);padding-top:max(6px,env(safe-area-inset-top))}
+.chtop .chback{background:none;border:0;color:#fff;font:400 2.2rem/1 system-ui,sans-serif;width:44px;height:44px;padding:0 0 4px;cursor:pointer;border-radius:50%}
+.chtop img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff}
+.chtop b{font:700 1.2rem Georgia,"Times New Roman",serif}
+#chwrap{flex:1;min-height:0;position:relative;overflow:hidden;background:#222;--bm:38,60,120;--bo:60,80,110}
+#chmsgs{position:absolute;inset:0;z-index:2;overflow-y:auto;padding:12px 10px 8px;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.30))}
+#chinfo{flex:none;margin:0;padding:6px 14px;background:#2a1010;color:#ffb4b4;font-size:.9rem}
+#chrep{flex:none;margin:0!important;border-radius:0!important;background:#1d2433!important;color:#fff}
+#chform{flex:none;padding:8px 8px max(8px,env(safe-area-inset-bottom));background:#0d0d0d}
+#chform input{flex:1;min-width:0;border-radius:24px;border:0;background:#202124;color:#fff;padding:12px 16px;font-size:1.05rem}
+#chform input:focus-visible{outline:2px solid #5b8def;outline-offset:0}
+#chform .btn{border-radius:50%;width:48px!important;height:48px;padding:0;font-size:1.3rem;background:#fff;color:#16358c;border:0}
 .titlebar{position:sticky;top:0;z-index:20;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .titlebar div{max-width:640px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:10px}
 .titlebar img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;flex:none}
@@ -329,7 +344,8 @@ function render(){
   const v={profile:vProfile,chat:vChat,tchat:vTChat,studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   if(S.view!=='chat')stopChat();
   app().innerHTML=v();
-  document.getElementById('hd').style.display=(S.view==='home'||S.view==='take')?'none':'block';
+  document.getElementById('hd').style.display=(S.view==='home'||S.view==='take'||S.view==='chat')?'none':'block';
+  document.body.classList.toggle('chatmode',S.view==='chat');
   document.getElementById('tb').style.display=S.view==='home'?'block':'none';
   document.body.classList.toggle('white',S.view==='brief');
   if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
@@ -555,23 +571,20 @@ async function loadProfiles(){
   if(need.length)paintChat(false);
 }
 function vChat(){
-  const c=S.ch;
-  return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
-<h2>Chat · ${esc(S.cls.name)}</h2>
-<div id="chwrap" style="position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin:0 0 14px;background:#222;--bm:38,60,120;--bo:60,80,110">
+  return `<div id="chpage"><div class="chtop"><button type="button" class="chback" onclick="go('devoirs')" aria-label="Retour">‹</button><img src="/avatar.webp" alt=""><b>M.Michel</b></div>
+<div id="chwrap">
 <div id="chbg" aria-hidden="true" style="position:absolute;inset:-6px;background:var(--bgimg) center/cover no-repeat;filter:blur(1.5px);z-index:0"></div>
 <div id="chfade" aria-hidden="true" style="position:absolute;inset:-6px;background-size:cover;background-position:center;filter:blur(1.5px);opacity:0;transition:opacity 1.6s ease;pointer-events:none;z-index:1"></div>
-<div id="chmsgs" style="position:relative;z-index:2;height:60vh;min-height:260px;overflow-y:auto;padding:14px 12px;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.30))"></div></div>
+<div id="chmsgs"></div></div>
 <p id="chinfo" class="err" role="status" style="display:none"></p>
-<div id="chrep" style="display:none;align-items:center;gap:8px;margin:0 0 8px;padding:7px 10px;border-radius:10px;border-left:4px solid #5b8def;background:var(--card,rgba(120,140,180,.15));font-size:.85rem"></div>
-<div id="chform" style="display:flex;gap:8px"><input type="text" id="chtxt" maxlength="300" placeholder="Écris un message…" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" onclick="sendChat()" style="width:auto;flex:none">Envoyer</button></div>
-<p class="hint" id="chnote"></p>`}
+<div id="chrep" style="display:none;align-items:center;gap:8px;padding:7px 12px;border-left:4px solid #5b8def;font-size:.85rem"></div>
+<div id="chform" style="display:flex;gap:8px;align-items:center"><input type="text" id="chtxt" maxlength="300" placeholder="Message" autocomplete="off" onkeydown="if(event.key==='Enter')sendChat()"><button class="btn primary" id="chbtn" aria-label="Envoyer" onclick="sendChat()" style="flex:none">➤</button></div></div>`}
 function paintChat(stick){
   const c=S.ch;if(!c||S.view!=='chat')return;
   applyChatBg();
   const box=document.getElementById('chmsgs');if(!box)return;
   const near=box.scrollHeight-box.scrollTop-box.clientHeight<80;
-  box.innerHTML=c.msgs.length?c.msgs.map(m=>{const p=S.prof[m.pk]||{name:m.name};const q=m.reply?`<div onclick="jumpMsg('${esc(m.reply.id)}')" style="cursor:pointer;margin:2px 0 5px;padding:4px 8px;border-left:3px solid #fff;border-radius:6px;background:rgba(255,255,255,.16);font-size:.78rem;line-height:1.25"><b>${esc(m.reply.name)}</b><div style="opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.reply.text)}</div></div>`:'';return `<div class="chrow" id="m-${esc(m.id)}" data-id="${esc(m.id)}" style="display:flex;align-items:center;gap:8px;margin:0 0 12px;${m.mine?'flex-direction:row-reverse':''}">${avatarH(Object.assign({},p,{name:m.name}),34)}<div class="chb" style="max-width:78%;background:rgba(${m.mine?'var(--bm)':'var(--bo)'},.93);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:${m.mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)"><b style="font-size:.82rem;color:#fff">${esc(m.name)}</b>${q}<div style="white-space:pre-wrap;word-break:break-word;color:#fff">${esc(m.text)}</div><small style="color:#d6e2ff">${new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${m.mine?'':` · ${m.reported?'Signalé ✓':`<a href="#" style="color:#fff;text-decoration:underline" onclick="reportMsg('${esc(m.id)}');return false">Signaler</a>`}`}</small></div><button type="button" aria-label="Répondre" title="Répondre" onclick="setReply('${esc(m.id)}')" style="flex:none;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:1rem;line-height:1;cursor:pointer">↩</button></div>`}).join(''):'<p style="margin:0;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.7)">Aucun message pour le moment. Dis bonjour !</p>';
+  box.innerHTML=c.msgs.length?c.msgs.map(m=>{const p=S.prof[m.pk]||{name:m.name};const q=m.reply?`<div onclick="jumpMsg('${esc(m.reply.id)}')" style="cursor:pointer;margin:2px 0 5px;padding:4px 8px;border-left:3px solid #fff;border-radius:6px;background:rgba(255,255,255,.16);font-size:.78rem;line-height:1.25"><b>${esc(m.reply.name)}</b><div style="opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.reply.text)}</div></div>`:'';return `<div class="chrow" id="m-${esc(m.id)}" data-id="${esc(m.id)}" style="display:flex;align-items:center;gap:8px;margin:0 0 12px;${m.mine?'flex-direction:row-reverse':''}">${m.mine?'':avatarH(Object.assign({},p,{name:m.name}),34)}<div class="chb" style="max-width:82%;background:rgba(${m.mine?'var(--bm)':'var(--bo)'},.93);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:${m.mine?'16px 16px 4px 16px':'16px 16px 16px 4px'};padding:7px 11px;box-shadow:0 2px 10px rgba(0,0,0,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)">${m.mine?'':`<b style="font-size:.9rem;color:#fff">${esc(m.name)}</b>`}${q}<div style="white-space:pre-wrap;word-break:break-word;color:#fff;font-size:1.05rem;line-height:1.35">${esc(m.text)}</div><small style="color:#d6e2ff;display:block;text-align:right">${new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}${m.mine?'':` · ${m.reported?'Signalé ✓':`<a href="#" style="color:#fff;text-decoration:underline" onclick="reportMsg('${esc(m.id)}');return false">Signaler</a>`}`}</small></div><button type="button" aria-label="Répondre" title="Répondre" onclick="setReply('${esc(m.id)}')" style="flex:none;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.4);color:#fff;font-size:1rem;line-height:1;cursor:pointer">↩</button></div>`}).join(''):'<p style="margin:0;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.7)">Aucun message pour le moment. Dis bonjour !</p>';
   bindSwipe(box);paintReply();
   if(stick||near)box.scrollTop=box.scrollHeight;
   const inf=document.getElementById('chinfo');
