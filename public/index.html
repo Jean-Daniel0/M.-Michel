@@ -48,6 +48,8 @@ h3{font-size:1.1rem}
 .chtop{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 4px;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.3);padding-top:max(6px,env(safe-area-inset-top))}
 .chtop .chback{background:none;border:0;color:#fff;font:400 2.2rem/1 system-ui,sans-serif;width:44px;height:44px;padding:0 0 4px;cursor:pointer;border-radius:50%}
 .chtop img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff}
+.chtop .chcls{font-weight:700;font-size:1.05rem;padding-left:10px;margin-left:2px;border-left:2px solid rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chtop .chcls{margin-left:2px;padding-left:10px;border-left:2px solid rgba(255,255,255,.55);font:700 1.05rem system-ui,sans-serif;opacity:.95;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .chtop b{font:700 1.2rem Georgia,"Times New Roman",serif}
 #chwrap{flex:1;min-height:0;position:relative;overflow:hidden;background:#222;--bm:38,60,120;--bo:60,80,110}
 #chmsgs{position:absolute;inset:0;z-index:2;overflow-y:auto;padding:12px 10px 8px;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.30))}
@@ -57,6 +59,48 @@ h3{font-size:1.1rem}
 #chform input{flex:1;min-width:0;border-radius:24px;border:0;background:#202124;color:#fff;padding:12px 16px;font-size:1.05rem}
 #chform input:focus-visible{outline:2px solid #5b8def;outline-offset:0}
 #chform .btn{border-radius:50%;width:48px!important;height:48px;padding:0;font-size:1.3rem;background:#fff;color:#16358c;border:0}
+.sh{position:relative;border-radius:20px;padding:18px 16px 16px;margin:0 0 18px;color:#fff;background:linear-gradient(135deg,#16358c 0%,#2a52c9 60%,#b80f2b 140%);box-shadow:0 10px 26px rgba(22,53,140,.35);overflow:hidden}
+.sh:after{content:"";position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12)}
+.sh-top{display:flex;align-items:center;gap:14px;position:relative;z-index:1}
+.sh-top .av{flex:none;border:0;background:none;padding:0;cursor:pointer;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.85)}
+.sh small{display:block;opacity:.85;font-size:.85rem}
+.sh h2{color:#fff;margin:0;font-size:1.35rem}
+.sh .cl{display:inline-block;margin-top:6px;background:rgba(255,255,255,.2);border-radius:99px;padding:2px 12px;font-weight:700;font-size:.9rem}
+.sh-acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;position:relative;z-index:1}
+.sh-acts button{display:flex;align-items:center;justify-content:center;gap:8px;position:relative;padding:11px 8px;border:0;border-radius:14px;background:rgba(255,255,255,.18);color:#fff;font:700 .95rem system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(4px)}
+.sh-acts button:active{background:rgba(255,255,255,.3)}
+.sh-acts svg{width:20px;height:20px}
+.sh-low{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;position:relative;z-index:1;font-size:.85rem}
+.sh-low button{background:none;border:0;color:#fff;opacity:.85;text-decoration:underline;font:inherit;cursor:pointer;padding:4px 0}
+.sh-low a{color:#fff}.sh-low .btn{background:rgba(255,255,255,.2);color:#fff;border:0}
+.sec{display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 10px}
+.sec h3{margin:0;font-size:1.15rem}
+.sec span{color:var(--mute);font-size:.85rem}
+.tw{border-radius:18px;overflow:hidden;background:var(--card);border:1px solid var(--line);margin:0 0 16px;box-shadow:0 4px 14px rgba(20,30,70,.1)}
+.tw .ph{position:relative;height:120px;background:linear-gradient(135deg,#16358c,#2a52c9)}
+.tw .ph img{display:block;width:100%;height:100%;object-fit:cover}
+.tw .ph:after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 35%,rgba(0,0,0,.6))}
+.tw .ph h3{position:absolute;z-index:1;left:14px;right:14px;bottom:10px;margin:0;color:#fff;font-size:1.15rem;text-shadow:0 2px 6px rgba(0,0,0,.5)}
+.tw .st{position:absolute;z-index:2;top:10px;right:10px;padding:3px 11px;border-radius:99px;font-size:.78rem;font-weight:700;background:#fff;color:#16358c;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.tw .st.ok{background:#15704a;color:#fff}.tw .st.late{background:#8f5400;color:#fff}
+.tw .bd{padding:12px 14px 14px}
+.tw .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.tw .acts .btn{flex:1;min-width:120px;text-align:center}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-6px 0 18px}
+.kp div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 6px;text-align:center;box-shadow:0 3px 10px rgba(20,30,70,.08)}
+.kp b{display:block;font:700 1.5rem Georgia,serif;color:var(--blue);line-height:1.1}
+.kp span{font-size:.75rem;color:var(--mute)}
+.chips{display:flex;gap:8px;margin:0 0 14px;overflow-x:auto}
+.chips button{flex:none;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;padding:6px 16px;font:600 .88rem system-ui,sans-serif;cursor:pointer}
+.chips button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.tw{animation:twin .45s ease both;transition:transform .15s,box-shadow .15s}
+.tw:active{transform:scale(.985)}
+@keyframes twin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.tw{animation:none}}
+.tw .ph{height:140px}
+.tw .acts .btn{padding:12px 14px;border-radius:12px;font-weight:700}
+.empty{text-align:center;padding:34px 16px;border:2px dashed var(--line);border-radius:18px;color:var(--mute)}
+.empty b{display:block;font-size:2rem;margin-bottom:6px}
 .titlebar{position:sticky;top:0;z-index:20;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .titlebar div{max-width:640px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:10px}
 .titlebar img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;flex:none}
@@ -571,7 +615,7 @@ async function loadProfiles(){
   if(need.length)paintChat(false);
 }
 function vChat(){
-  return `<div id="chpage"><div class="chtop"><button type="button" class="chback" onclick="go('devoirs')" aria-label="Retour">‹</button><img src="/avatar.webp" alt=""><b>M.Michel</b></div>
+  return `<div id="chpage"><div class="chtop"><button type="button" class="chback" onclick="go('devoirs')" aria-label="Retour">‹</button><img src="/avatar.webp" alt=""><b>M.Michel</b><span class="chcls">${esc(S.cls&&S.cls.name||'')}</span></div>
 <div id="chwrap">
 <div id="chbg" aria-hidden="true" style="position:absolute;inset:-6px;background:var(--bgimg) center/cover no-repeat;filter:blur(1.5px);z-index:0"></div>
 <div id="chfade" aria-hidden="true" style="position:absolute;inset:-6px;background-size:cover;background-position:center;filter:blur(1.5px);opacity:0;transition:opacity 1.6s ease;pointer-events:none;z-index:1"></div>
@@ -664,20 +708,24 @@ ${mascot('happy','Voici ta progression.',84,'small')}
 
 /* ---------- Élève : travaux de la classe ---------- */
 function vDevoirs(){
-  const L=S.devoirs;
-  return `<button class="back" onclick="go('home')">‹ Changer de code</button>
-${mascot(S.err?'oops':'hello',S.err||('Bonjour '+(S.stu?S.stu.name.split(' ')[0]:'')+' ! Voici les travaux de ta classe.'),96,'small')}
-<p style="margin:0 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><button type="button" onclick="go('profile')" aria-label="Mon profil" style="border:0;background:none;padding:0;cursor:pointer">${avatarH(S.stu,44)}</button><button class="btn small primary" onclick="openMyNotes()">Mes notes</button><button class="btn small primary" onclick="openChat()" aria-label="Chat de la classe" style="position:relative">${MSG_ICON}Chat<span id="chbadge" role="status" style="display:${S.unread>0?'inline-flex':'none'};position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#d4122f;color:#fff;font-size:.78rem;font-weight:700;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box">${S.unread>99?'99+':(S.unread||0)}</span></button><button class="btn small" onclick="stuLogout()">Me déconnecter</button>${vPush()}</p>
-<h2>${esc(S.cls.name)}</h2>
-${S.cls.level?`<p class="muted" style="margin:-6px 0 14px">${esc(S.cls.level)}</p>`:''}
-${L.length?L.map((d,i)=>`<div class="card">
-${SUBJ_IMG[d.subject]?`<img class="cover" src="${SUBJ_IMG[d.subject]}" alt="" loading="lazy">`:''}
-<h3>${esc(d.title)}</h3>
-<p style="margin:0 0 10px"><span class="tag">${esc(d.subject)}</span><span class="tag">${TYPE[d.mode]||'Quiz'}</span>${d.deadline?`<span class="tag ${d.closed?'warn':''}">${d.closed?'Terminé':'Avant le '+fmtDate(d.deadline)}</span>`:''}${d.minutes>0?`<span class="tag">${d.minutes} min</span>`:''}</p>
-${d.mine&&d.mine.finished?`<p style="margin:0 0 10px"><span class="tag ok">Rendu · ${fmtS(d.mine.score10)} / 10${d.mine.pending?' (provisoire)':''}</span></p>`:''}
-${d.hasBrief?`<button class="btn small" onclick="openBrief(${i})">Lire le libellé</button>`:''}
-${d.hasQs&&!d.closed&&!(d.mine&&d.mine.finished)?`<button class="btn small primary" onclick="openDevoir(${i})">Commencer</button>`:''}
-</div>`).join(''):'<p class="muted">Aucun travail pour le moment. Reviens plus tard.</p>'}`}
+  const L=S.devoirs,todo=L.filter(d=>d.hasQs&&!d.closed&&!(d.mine&&d.mine.finished)).length;
+  const first=S.stu?S.stu.name.split(' ')[0]:'';
+  const F=S.dfilter||'all',isDone=d=>!!(d.mine&&d.mine.finished),isTodo=d=>d.hasQs&&!d.closed&&!isDone(d);
+  const fin2=L.filter(d=>isDone(d)&&!d.mine.pending&&typeof d.mine.score10==='number'),nDone=L.filter(isDone).length,avg=fin2.length?fin2.reduce((t,d)=>t+d.mine.score10,0)/fin2.length:null;
+  return `${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
+<div class="sh">
+<div class="sh-top"><button type="button" class="av" onclick="go('profile')" aria-label="Mon profil">${avatarH(S.stu,56)}</button>
+<div style="min-width:0"><small>Bonjour</small><h2>${esc(first)} 👋</h2><span class="cl">${esc(S.cls.name)}${S.cls.level?' · '+esc(S.cls.level):''}</span></div></div>
+<div class="sh-acts"><button type="button" onclick="openMyNotes()">📊 Mes notes</button><button type="button" onclick="openChat()" aria-label="Chat de la classe">${MSG_ICON}Chat<span id="chbadge" role="status" style="display:${S.unread>0?'inline-flex':'none'};position:absolute;top:-7px;right:-4px;min-width:22px;height:22px;padding:0 5px;border-radius:11px;background:#d4122f;color:#fff;font-size:.78rem;font-weight:700;align-items:center;justify-content:center;border:2px solid #fff;box-sizing:border-box">${S.unread>99?'99+':(S.unread||0)}</span></button></div>
+<div class="sh-low"><span>${vPush()}</span><span><button type="button" onclick="go('home')">Changer de code</button> · <button type="button" onclick="stuLogout()">Me déconnecter</button></span></div>
+</div>
+<div class="kp"><div><b>${todo}</b><span>À faire</span></div><div><b>${nDone}</b><span>Terminés</span></div><div><b>${avg===null?'–':fmtS(avg)}</b><span>Moyenne /10</span></div></div>
+<div class="sec"><h3>Mes travaux</h3><span>${L.length?(todo?todo+' à faire':'Tout est à jour ✓'):''}</span></div>
+<div class="chips" role="tablist">${[['all','Tous'],['todo','À faire'],['done','Terminés']].map(([k,t])=>`<button type="button" role="tab" aria-selected="${F===k}" class="${F===k?'on':''}" onclick="S.dfilter='${k}';render()">${t}</button>`).join('')}</div>
+${L.length?(L.some((d,i)=>F==='all'||(F==='todo'?isTodo(d):isDone(d)))?L.map((d,i)=>{if(!(F==='all'||(F==='todo'?isTodo(d):isDone(d))))return '';const fin=d.mine&&d.mine.finished;const st=fin?`<span class="st ok">✓ ${fmtS(d.mine.score10)} / 10${d.mine.pending?' (prov.)':''}</span>`:d.closed?'<span class="st late">Terminé</span>':d.hasQs?'<span class="st">À faire</span>':'<span class="st">Libellé</span>';
+return `<div class="tw" style="animation-delay:${Math.min(i,8)*60}ms"><div class="ph">${SUBJ_IMG[d.subject]?`<img src="${SUBJ_IMG[d.subject]}" alt="" loading="lazy">`:''}${st}<h3>${esc(d.title)}</h3></div>
+<div class="bd"><p style="margin:0 0 8px"><span class="tag">${esc(d.subject)}</span><span class="tag">${TYPE[d.mode]||'Quiz'}</span>${d.deadline&&!d.closed?`<span class="tag warn">Avant le ${fmtDate(d.deadline)}</span>`:''}${d.minutes>0?`<span class="tag">⏱ ${d.minutes} min</span>`:''}</p>
+<div class="acts">${d.hasBrief?`<button class="btn small" onclick="openBrief(${i})">📄 Lire le libellé</button>`:''}${d.hasQs&&!d.closed&&!fin?`<button class="btn small primary" onclick="openDevoir(${i})">Commencer ›</button>`:''}</div></div></div>`}).join(''):`<div class="empty"><b>${F==='done'?'🎯':'🎉'}</b>${F==='done'?'Rien de terminé pour le moment.':'Rien à faire ici. Bravo !'}</div>`):'<div class="empty"><b>📚</b>Aucun travail pour le moment.<br>Reviens plus tard !</div>'}`}
 
 async function openBrief(i){
   S.dv=S.devoirs[i];
