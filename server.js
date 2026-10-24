@@ -401,12 +401,15 @@ async function chatState(st) {
   if (await inQuiz(st.cid, st.sid)) return { open: false, reason: 'Le chat est bloqué pendant un quiz.' };
   return { open: true };
 }
-const pubMsg = (m, me) => ({ id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, pv: m.pv || 0, reply: m.reply || null, mine: m.pk === me, reported: (m.reports || []).includes(me) });
+const RX_OK = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const rxSum = (m, me) => { const c = {}; for (const [pk, e] of Object.entries(m.rx || {})) { c[e] = c[e] || { e, n: 0, mine: false }; c[e].n++; if (pk === me) c[e].mine = true; } return Object.values(c).sort((a, b) => b.n - a.n); };
+const pubMsg = (m, me) => ({ rx: rxSum(m, me), id: m.id, pk: m.pk, name: m.name, text: m.text, ts: m.ts, pv: m.pv || 0, reply: m.reply || null, mine: m.pk === me, reported: (m.reports || []).includes(me) });
 app.get('/api/chat', sauth, wrap(async (req, res) => {
   const st = await chatState(req.st);
   const since = parseInt(req.query.since) || 0;
   const list = (await kv.get(chatKey(req.st.cid))) || [];
-  res.json({ ...st, now: Date.now(), messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
+  const rxs = {}; list.forEach(m => { if (m.rx && Object.keys(m.rx).length) rxs[m.id] = rxSum(m, req.st.pk); });
+  res.json({ ...st, now: Date.now(), rxs, messages: list.filter(m => m.ts > since).map(m => pubMsg(m, req.st.pk)) });
 }));
 app.get('/api/chat/unread', sauth, wrap(async (req, res) => {
   const since = parseInt(req.query.since) || 0;
@@ -435,6 +438,23 @@ app.post('/api/chat', sauth, wrap(async (req, res) => {
   });
   res.json({ message: pubMsg(m, req.st.pk) });
   notifyChat(req.st, m);
+}));
+app.post('/api/chat/react', sauth, wrap(async (req, res) => {
+  const st = await chatState(req.st);
+  if (!st.open) return fail(res, 403, st.reason);
+  const id = str(req.body.id, 40), e = str(req.body.emoji, 8);
+  if (!RX_OK.includes(e)) return fail(res, 400, 'Réaction non permise.');
+  let out = [];
+  await withChat(req.st.cid, async () => {
+    const list = (await kv.get(chatKey(req.st.cid))) || [];
+    const m = list.find(x => x.id === id);
+    if (!m) return;
+    m.rx = m.rx || {};
+    if (m.rx[req.st.pk] === e) delete m.rx[req.st.pk]; else m.rx[req.st.pk] = e; // un seul emoji par élève et par message ; même emoji = retrait
+    await kv.set(chatKey(req.st.cid), list);
+    out = rxSum(m, req.st.pk);
+  });
+  res.json({ id, rx: out });
 }));
 app.post('/api/chat/report', sauth, wrap(async (req, res) => {
   const id = str(req.body.id, 40);
