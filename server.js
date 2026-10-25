@@ -159,6 +159,7 @@ function cleanQuiz(d) {
     qs,
     draft: !!d.draft,
     period: str(d.period, 40).trim(),
+    cat: mode !== 'libelle' && ['quiz', 'devoir', 'lecon', 'examen'].includes(d.cat) ? d.cat : '',
     coef: Math.max(0.5, Math.min(10, Math.round((parseFloat(d.coef) || 1) * 2) / 2)),
     created: d.created || Date.now(),
   };
@@ -718,6 +719,123 @@ app.get('/api/classes/:id/students/:sid/history', auth, wrap(async (req, res) =>
   const byPeriod = periodsOf(c).map(p => ({ period: p, avg10: weighted(h.filter(x => x.period === p)), n: h.filter(x => x.period === p).length }));
   res.json({ name: name || sid, history: h, avg10: weighted(h), byPeriod });
 }));
+/* ---------- Bulletin sur 100 : catégories pondérées + notes manuelles ---------- */
+const CATS = ['quiz', 'devoir', 'lecon', 'examen'];
+const DEF_W = { quiz: 30, devoir: 15, lecon: 25, examen: 30 };
+const catOf = q => CATS.includes(q.cat) ? q.cat : (q.mode === 'devoir' ? 'devoir' : 'quiz');
+function gradingOf(c) {
+  const g = (c && c.grading) || {}, w = {};
+  CATS.forEach(k => { const v = Number(g.w && g.w[k]); w[k] = Number.isFinite(v) && v >= 0 && v <= 100 ? v : DEF_W[k]; });
+  return { w, absent: g.absent === 'zero' ? 'zero' : 'ns' };
+}
+const r1 = v => Math.round(v * 10) / 10;
+const manKey = (cid, id) => 'man:' + cid + ':' + id;
+async function manualEntries(cid) {
+  const list = (await Promise.all((await kv.list('man:' + cid + ':')).map(k => kv.get(k)))).filter(Boolean);
+  return list.sort((a, b) => (a.created || 0) - (b.created || 0));
+}
+const bulMemo = new Map();
+async function bulletinData(c) {
+  const m = bulMemo.get(c.id);
+  if (m && Date.now() - m.t < 10000) return m.d;
+  const quizzes = (await gradedQuizzes(c.id)).filter(q => q.mode !== 'libelle');
+  const atts = {};
+  for (const q of quizzes) {
+    const l = (await Promise.all((await kv.list('att:' + q.id + ':')).map(k => kv.get(k)))).filter(Boolean);
+    atts[q.id] = Object.fromEntries(l.map(a => [a.key, a]));
+  }
+  const manual = await manualEntries(c.id);
+  const studs = (await Promise.all((await kv.list('stu:' + c.id + ':')).map(k => kv.get(k)))).filter(Boolean);
+  const d = { quizzes, atts, manual, studs };
+  if (bulMemo.size > 50) bulMemo.clear();
+  bulMemo.set(c.id, { t: Date.now(), d });
+  return d;
+}
+// Une note par catégorie = moyenne (pondérée par les coefficients) de ses travaux, multipliée par les points de la catégorie.
+// Seules les catégories où l'élève a au moins une note comptent : le total s'accumule au fil de la période.
+function bulRow(c, d, pseudo, period) {
+  const g = gradingOf(c), sid = 'u_' + pseudo, items = { quiz: [], devoir: [], lecon: [], examen: [] };
+  for (const q of d.quizzes) {
+    if (period && q.period !== period) continue;
+    const a = d.atts[q.id] && d.atts[q.id][sid];
+    let f = null;
+    if (a && a.finished) { const sc = attScore(a); if (sc.score10 !== null) f = sc.score10 / 10; }
+    else if (g.absent === 'zero' && deadlinePassed(q)) f = 0;
+    if (f !== null) items[catOf(q)].push({ f, coef: q.coef || 1 });
+  }
+  for (const e of d.manual) {
+    if (period && e.period !== period) continue;
+    const v = e.notes && e.notes[pseudo];
+    if (typeof v === 'number' && e.max > 0 && CATS.includes(e.cat)) items[e.cat].push({ f: v / e.max, coef: 1 });
+  }
+  const cats = {}; let pts = 0, of = 0;
+  for (const k of CATS) {
+    const it = items[k], w = g.w[k];
+    if (!it.length || !w) { cats[k] = { n: it.length, avg: null, pts: null, of: w }; continue; }
+    const sw = it.reduce((t, x) => t + x.coef, 0), avg = it.reduce((t, x) => t + x.f * x.coef, 0) / sw;
+    cats[k] = { n: it.length, avg: Math.round(avg * 1000) / 1000, pts: r1(avg * w), of: w };
+    pts += avg * w; of += w;
+  }
+  return { cats, pts: r1(pts), of, eq100: of ? r1(pts / of * 100) : null };
+}
+function bulTable(c, d, period) {
+  const rows = d.studs.map(r => ({ pseudo: r.pseudo, name: r.name, ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const ranked = rows.filter(r => r.eq100 !== null).sort((a, b) => b.eq100 - a.eq100);
+  ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].eq100 === r.eq100 ? ranked[i - 1].rank : i + 1; });
+  const v = ranked.map(r => r.eq100);
+  return { rows, rankedCount: ranked.length, classAvg: v.length ? r1(v.reduce((t, x) => t + x, 0) / v.length) : null };
+}
+app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const period = str(req.query.period, 40), d = await bulletinData(c), t = bulTable(c, d, period);
+  res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
+    items: [...d.quizzes.filter(q => !period || q.period === period).map(q => ({ title: q.title, cat: catOf(q), auto: true })), ...d.manual.filter(e => !period || e.period === period).map(e => ({ title: e.title, cat: e.cat, auto: false }))] });
+}));
+app.get('/api/student/bulletin', sauth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.st.cid);
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const d = await bulletinData(c), out = [];
+  for (const p of ['', ...periodsOf(c)]) {
+    const t = bulTable(c, d, p), me = t.rows.find(r => r.pseudo === req.st.pseudo);
+    if (me && me.eq100 !== null) out.push({ period: p, cats: me.cats, pts: me.pts, of: me.of, eq100: me.eq100, rank: me.rank, rankedCount: t.rankedCount });
+  }
+  res.json({ grading: gradingOf(c), periods: out });
+}));
+const CAT_LABEL = { quiz: 'Quiz', devoir: 'Devoir', lecon: 'Leçon', examen: 'Examen' };
+app.get('/api/classes/:id/manual', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const d = await bulletinData(c);
+  res.json({ entries: d.manual, students: d.studs.map(r => ({ pseudo: r.pseudo, name: r.name })).sort((a, b) => a.name.localeCompare(b.name, 'fr')), periods: periodsOf(c), grading: gradingOf(c) });
+}));
+app.post('/api/classes/:id/manual', auth, wrap(async (req, res) => {
+  const c = await kv.get('class:' + req.params.id.toUpperCase());
+  if (!c) return fail(res, 404, 'Classe introuvable.');
+  const b = req.body || {}, title = str(b.title, 80).trim();
+  if (!title) return fail(res, 400, 'Donne un titre à cette note (ex : Récitation 1, Examen).');
+  const max = Math.round((parseFloat(b.max) || 0) * 100) / 100;
+  if (!(max > 0 && max <= 1000)) return fail(res, 400, 'Choisis le total de points (ex : 10, 20 ou 100).');
+  const cat = CATS.includes(b.cat) ? b.cat : 'lecon';
+  const period = periodsOf(c).includes(b.period) ? b.period : '';
+  const pseudos = new Set((await kv.list('stu:' + c.id + ':')).map(k => k.slice(('stu:' + c.id + ':').length)));
+  const notes = {};
+  if (b.notes && typeof b.notes === 'object') for (const [pk, v] of Object.entries(b.notes)) {
+    if (!pseudos.has(pk) || v === '' || v === null || v === undefined) continue;
+    const n = parseFloat(String(v).replace(',', '.'));
+    if (Number.isFinite(n)) notes[pk] = Math.round(Math.max(0, Math.min(max, n)) * 100) / 100;
+  }
+  let id = str(b.id, 12).replace(/[^a-z0-9]/gi, ''), old = id ? await kv.get(manKey(c.id, id)) : null;
+  if (!old) id = crypto.randomBytes(4).toString('hex');
+  const e = { id, title, cat, period, max, notes, created: old ? old.created : Date.now() };
+  await kv.set(manKey(c.id, id), e);
+  res.json({ entry: e });
+}));
+app.delete('/api/classes/:id/manual/:mid', auth, wrap(async (req, res) => {
+  await kv.del(manKey(req.params.id.toUpperCase(), str(req.params.mid, 12).replace(/[^a-z0-9]/gi, '')));
+  res.json({ ok: true });
+}));
+
 app.get('/api/classes/:id', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());
   if (!c) return fail(res, 404, 'Classe introuvable.');
@@ -745,6 +863,10 @@ app.post('/api/classes', auth, wrap(async (req, res) => {
     const ps = [...new Set(req.body.periods.map(x => str(x, 40).trim()).filter(Boolean))].slice(0, 8);
     if (ps.length) c.periods = ps;
   }
+  if (req.body.grading && typeof req.body.grading === 'object') {
+    const w = {}; CATS.forEach(k => { const v = Number(req.body.grading.w && req.body.grading.w[k]); w[k] = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v * 2) / 2)) : DEF_W[k]; });
+    c.grading = { w, absent: req.body.grading.absent === 'zero' ? 'zero' : 'ns' };
+  }
   await kv.set('class:' + id, c);
   res.json({ class: c });
 }));
@@ -755,6 +877,7 @@ app.delete('/api/classes/:id', auth, wrap(async (req, res) => {
     await kv.del('quiz:' + q.id);
   }
   await Promise.all((await kv.list('stu:' + id + ':')).map(k => kv.del(k)));
+  await Promise.all((await kv.list('man:' + id + ':')).map(k => kv.del(k)));
   await kv.del(chatKey(id));
   await kv.del('class:' + id);
   res.json({ ok: true });
@@ -808,7 +931,7 @@ async function pushToClass(cid, { title, body, exclude, excludeSet, only, url, t
 }
 const chatAgg = new Map(); // classe -> { n, t } : messages récents regroupés dans une même notification
 const qtCache = new Map();
-kv.onSet = (k, v) => { if (k.startsWith('att:') && (!v || v.finished || !(v.answers && v.answers.length))) qtCache.clear(); }; // un quiz commence ou se termine : on recalcule tout de suite
+kv.onSet = (k, v) => { if (/^(att|man|quiz|stu|class):/.test(k)) bulMemo.clear(); if (k.startsWith('att:') && (!v || v.finished || !(v.answers && v.answers.length))) qtCache.clear(); }; // un quiz commence ou se termine : on recalcule tout de suite
 async function activeQuizTakers(cid) {
   const c = qtCache.get(cid);
   if (c && Date.now() - c.t < 8000) return c.set;

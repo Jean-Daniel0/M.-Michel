@@ -102,6 +102,7 @@ h3{font-size:1.1rem}
 .tw .bd{padding:12px 14px 14px}
 .tw .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
 .tw .acts .btn{flex:1;min-width:120px;text-align:center}
+.grid.tight th,.grid.tight td{padding:5px 5px;font-size:.8rem}.grid.tight .nm{max-width:90px;overflow:hidden;text-overflow:ellipsis}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-6px 0 18px}
 .kp div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 6px;text-align:center;box-shadow:0 3px 10px rgba(20,30,70,.08)}
 .kp b{display:block;font:700 1.5rem Georgia,serif;color:var(--blue);line-height:1.1}
@@ -409,7 +410,7 @@ window.addEventListener('load',()=>setTimeout(initPush,500));
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
 const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
-const SAUTH=['/api/student/me','/api/student/profile','/api/chat','/api/student/history','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
+const SAUTH=['/api/student/me','/api/student/profile','/api/chat','/api/student/history','/api/student/bulletin','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
 async function api(path,method,body,keepalive){
   const h={'Content-Type':'application/json'};
   const tk=store.get('mm_token');
@@ -435,6 +436,7 @@ const fmtT=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+
 const fmtDate=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||'');return m?m[3]+'/'+m[2]+'/'+m[1]:''};
 const SUBJECTS=['Informatique','Éducation à la citoyenneté','Éducation esthétique et artistique','Autre'];
 const TYPE={quiz:'Quiz',devoir:'Devoir',libelle:'Consigne'};
+const CATS=['quiz','devoir','lecon','examen'],CAT_LBL={quiz:'Quiz',devoir:'Devoirs',lecon:'Leçons récitées',examen:'Examen'},GW0={quiz:30,devoir:15,lecon:25,examen:30};
 const COLORS=[['Blanc','#ffffff'],['Noir','#111111'],['Bleu','#16358c'],['Rouge','#b80f2b'],['Vert','#15704a'],['Orange','#c25a00'],['Violet','#6b2fa0'],['Gris','#555555']];
 let S={view:'home',err:'',busy:false};
 let timerId=null;
@@ -443,7 +445,7 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
 function render(){
-  const v={profile:vProfile,chat:vChat,tchat:vTChat,studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
+  const v={bulletin:vBulletin,manual:vManual,profile:vProfile,chat:vChat,tchat:vTChat,studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   if(S.view!=='chat')stopChat();
   app().innerHTML=v();
   document.getElementById('hd').style.display=(S.view==='home'||S.view==='take'||S.view==='chat')?'none':'block';
@@ -831,7 +833,7 @@ async function reportMsg(id){
 const fmtS=v=>v===null||v===undefined?'—':String(v).replace('.',',');
 async function openMyNotes(){
   app().innerHTML='<p class="muted">Chargement…</p>';
-  try{S.mn=await api('/api/student/history');S.err='';S.view='mynotes';render()}
+  try{S.mn=await api('/api/student/history');try{S.mn.bul=await api('/api/student/bulletin')}catch(e){S.mn.bul=null}S.err='';S.view='mynotes';render()}
   catch(e){S.err=e.message;S.view='devoirs';render()}
 }
 function chart(h){
@@ -847,11 +849,20 @@ function chart(h){
 ${pts.map(a=>`<circle cx="${x(h.indexOf(a))}" cy="${y(a.score10)}" r="4.5" fill="#16358c"/>`).join('')}</svg>`;
 }
 function histList(h){return h.length?h.slice().reverse().map(a=>`<div class="ans" style="margin-top:8px;padding-top:8px"><b>${esc(a.title)}</b>${a.period?` <span class="tag">${esc(a.period)}</span>`:''}${a.coef!==1?` <span class="tag">coef ${fmtS(a.coef)}</span>`:''}<span style="display:block">${fmtS(a.score10)} / 10 <span class="muted">· ${a.s}/${a.g}${a.p?` · ${a.p} à corriger`:''}</span></span></div>`).join(''):'<p class="muted">Aucun travail rendu pour le moment.</p>'}
+function vMyBul(b){
+  if(!b||!b.periods.length)return '';
+  const L=b.periods.length>2?b.periods:b.periods.filter(p=>p.period);
+  return (L.length?L:b.periods).map(p=>`<div class="card"><h3 style="margin:0 0 6px">${p.period?esc(p.period):'Toutes les périodes'} · Bulletin</h3>
+<p style="margin:0 0 8px;font-size:1.3rem"><b>${fp(p.eq100)} / 100</b>${p.rank?` <span class="tag">${p.rank}${p.rank===1?'er':'e'} sur ${p.rankedCount}</span>`:''}</p>
+${CATS.map(k=>p.cats[k].pts===null?'':`<p style="margin:2px 0;display:flex;justify-content:space-between"><span>${CAT_LBL[k]} <small class="muted">(${p.cats[k].n} note${p.cats[k].n>1?'s':''})</small></span><b>${fp(p.cats[k].pts)} / ${p.cats[k].of}</b></p>`).join('')}
+${p.of<CATS.reduce((a,k)=>a+b.grading.w[k],0)?`<p class="hint" style="margin:8px 0 0">Total provisoire : ${fp(p.pts)} sur ${p.of} points possibles pour l'instant. Il se complète avec les prochaines notes.</p>`:''}</div>`).join('')
+}
 function vMyNotes(){
   const t=S.mn;
   return `<button class="back" onclick="go('devoirs')">‹ Retour aux travaux</button>
 ${mascot('happy','Voici ta progression.',84,'small')}
 <h2>Mes notes</h2>
+${vMyBul(t.bul)}
 <div class="card"><p style="margin:0">Moyenne : <b>${fmtS(t.avg10)} / 10</b></p>${chart(t.history)}</div>
 <div class="card">${histList(t.history)}</div>`}
 
@@ -1071,19 +1082,23 @@ ${c.level?`<p class="muted" style="margin:0 0 8px">${esc(c.level)}</p>`:''}
 <button class="btn" onclick="S.name='';S.view='home';render()">Voir la page des élèves</button>
 <button class="btn" onclick="logout()">Me déconnecter de cet appareil</button>`}
 function logout(){store.del('mm_token');S.token=false;go('home')}
-function newClass(){S.cd={id:'',name:'',level:'',periods:'1re étape\n2e étape\n3e étape'};S.err='';S.view='cedit';render()}
-async function editClass(id){try{const r=await api('/api/classes/'+id);const c=r.class;S.cd={id:c.id,name:c.name,level:c.level||'',periods:(c.periods||[]).join('\n')};S.err='';S.view='cedit';render()}catch(e){S.err=e.message;render()}}
+function newClass(){S.cd={id:'',name:'',level:'',periods:'1re étape\n2e étape\n3e étape',gw:Object.assign({},GW0),absent:'ns'};S.err='';S.view='cedit';render()}
+async function editClass(id){try{const r=await api('/api/classes/'+id);const c=r.class;S.cd={id:c.id,name:c.name,level:c.level||'',periods:(c.periods||[]).join('\n'),gw:Object.assign({},GW0,(c.grading&&c.grading.w)||{}),absent:(c.grading&&c.grading.absent)||'ns'};S.err='';S.view='cedit';render()}catch(e){S.err=e.message;render()}}
 function vCEdit(){const c=S.cd;return `<button class="back" onclick="enterTeacher()">‹ Annuler</button>
 <h2>${c.id?'Renommer la classe':'Nouvelle classe'}</h2>
 <label for="cn">Nom de la classe</label><input type="text" id="cn" placeholder="ex : 8e AF A, NS2, 9e B" value="${esc(c.name)}" oninput="S.cd.name=this.value">
 <label for="cl">Niveau (facultatif)</label><input type="text" id="cl" placeholder="ex : Fondamental 3e cycle" value="${esc(c.level)}" oninput="S.cd.level=this.value">
 <label for="cp">Périodes (une par ligne)</label><textarea id="cp" rows="4" oninput="S.cd.periods=this.value">${esc(c.periods||'')}</textarea>
 <p class="hint">Ex : 1re étape, 2e étape… Chaque travail est rattaché à une période pour le carnet de notes.</p>
+<h3 style="margin-top:18px">Barème du bulletin (sur ${CATS.reduce((t,k)=>t+(+c.gw[k]||0),0)})</h3>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${CATS.map(k=>`<div><label for="gw${k}">${CAT_LBL[k]}</label><input type="number" id="gw${k}" min="0" max="100" step="0.5" value="${c.gw[k]}" oninput="S.cd.gw['${k}']=+this.value||0"></div>`).join('')}</div>
+<p class="hint">Points de chaque catégorie. Par défaut : Examen 30, Quiz 30, Leçons 25, Devoirs 15 (total 100).</p>
+<label for="gab">Travail non fait ou élève absent</label><select id="gab" onchange="S.cd.absent=this.value"><option value="ns" ${c.absent!=='zero'?'selected':''}>Non noté : ne compte pas dans la moyenne</option><option value="zero" ${c.absent==='zero'?'selected':''}>Compte comme 0 une fois la date limite passée</option></select>
 <p class="hint">Un code unique est créé pour la classe. Tes élèves l'entrent sur la page d'accueil pour voir leurs travaux.</p>
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p><button class="btn primary" onclick="saveClass()">Enregistrer</button>`}
 async function saveClass(){
-  try{await api('/api/classes','POST',Object.assign({},S.cd,{periods:String(S.cd.periods||'').split('\n').map(x=>x.trim()).filter(Boolean)}));enterTeacher()}catch(e){S.err=e.message;render()}
+  try{await api('/api/classes','POST',Object.assign({},S.cd,{periods:String(S.cd.periods||'').split('\n').map(x=>x.trim()).filter(Boolean),grading:{w:S.cd.gw,absent:S.cd.absent}}));enterTeacher()}catch(e){S.err=e.message;render()}
 }
 async function delClass(id){
   if(!confirm('Supprimer cette classe, tous ses travaux et toutes les copies ?'))return;
@@ -1105,6 +1120,8 @@ function vTClass(){
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
 <button class="btn primary" onclick="openCarnet('${esc(c.id)}')">Carnet de notes</button>
+<button class="btn primary" onclick="openBulletin('${esc(c.id)}')">Bulletin sur 100</button>
+<button class="btn" onclick="openManual('${esc(c.id)}')">Notes manuelles (récitations, examen…)</button>
 <button class="btn" onclick="openStuds('${esc(c.id)}')">Élèves inscrits</button>
 <button class="btn" onclick="openTChat('${esc(c.id)}')">Chat de la classe</button>
 <button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
@@ -1163,6 +1180,66 @@ function vSProg(){
 <div class="card"><p style="margin:0">Moyenne générale : <b>${fmtS(t.avg10)} / 10</b></p>${chart(t.history)}
 ${t.byPeriod.filter(b=>b.n).map(b=>`<p style="margin:4px 0 0"><span class="tag">${esc(b.period)}</span> ${fmtS(b.avg10)} / 10 <span class="muted">· ${b.n} travail${b.n>1?'ux':''}</span></p>`).join('')}</div>
 <div class="card">${histList(t.history)}</div>`}
+
+
+/* ---------- Professeur : bulletin sur 100 et notes manuelles ---------- */
+const SHORT={quiz:'Quiz',devoir:'Dev.',lecon:'Leç.',examen:'Exam.'};
+const fp=v=>v===null||v===undefined?'':String(v).replace('.',',');
+async function openBulletin(id,period){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{S.bl=await api('/api/classes/'+id+'/bulletin?period='+encodeURIComponent(period||''));S.err='';S.view='bulletin';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function vBulletin(){
+  const t=S.bl,g=t.grading,tot=CATS.reduce((a,k)=>a+g.w[k],0);
+  return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
+<h2>Bulletin sur 100 · ${esc(t.class.name)}</h2>
+<label for="bpf">Période</label>
+<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+<div class="card"><p style="margin:0">${t.students.length} élève${t.students.length>1?'s':''} · ${t.items.length} note${t.items.length>1?'s':''} dans la période</p>
+<p style="margin:4px 0 0">Moyenne de la classe : <b>${fp(t.classAvg)||'—'} / 100</b></p>
+<p class="hint" style="margin:6px 0 0">Barème : ${CATS.map(k=>`${CAT_LBL[k]} ${g.w[k]}`).join(' · ')} (total ${tot}). Chaque catégorie = moyenne de ses notes × ses points. Le total s'accumule : tant qu'il manque une catégorie (ex : l'examen), « Total » est sur moins de ${tot} et « /100 » le ramène sur 100.</p></div>
+${t.students.length?`<div style="overflow-x:auto;margin:0 0 14px"><table class="grid tight"><thead><tr><th>#</th><th>Élève</th>${CATS.map(k=>`<th>${SHORT[k]}<br><small>/${g.w[k]}</small></th>`).join('')}<th>Total</th><th>/100</th></tr></thead><tbody>
+${t.students.map(s=>`<tr><td>${s.rank||''}</td><td class="nm">${esc(s.name)}</td>${CATS.map(k=>`<td>${s.cats[k].pts===null?'':fp(s.cats[k].pts)+(s.cats[k].n>1?`<small> (${s.cats[k].n})</small>`:'')}</td>`).join('')}<td>${s.eq100===null?'':fp(s.pts)+'<small>/'+s.of+'</small>'}</td><td><b>${fp(s.eq100)}</b></td></tr>`).join('')}
+</tbody></table></div><p class="hint">Les chiffres entre parenthèses = nombre de notes dans la catégorie.</p>`:'<p class="muted">Aucun élève inscrit.</p>'}
+<button class="btn" onclick="openManual('${esc(t.class.id)}')">Saisir des notes manuelles</button>`}
+
+async function openManual(id){
+  app().innerHTML='<p class="muted">Chargement…</p>';
+  try{const r=await api('/api/classes/'+id+'/manual');S.mm=Object.assign(r,{cid:id,edit:null});S.err='';S.view='manual';render()}
+  catch(e){S.err=e.message;S.view='tclass';render()}
+}
+function newManual(){const t=S.mm;S.mm.edit={id:'',title:'',cat:'lecon',period:t.periods[0]||'',max:10,notes:{}};render()}
+function editManual(i){const e=S.mm.entries[i];S.mm.edit={id:e.id,title:e.title,cat:e.cat,period:e.period||'',max:e.max,notes:Object.assign({},e.notes)};render()}
+function vManual(){
+  const t=S.mm,e=t.edit;
+  if(!e)return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
+<h2>Notes manuelles</h2>
+<p class="hint">Pour les notes qui ne passent pas par le site : récitations à l'oral, examen sur papier, etc. Elles entrent dans le bulletin avec leur catégorie.</p>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<button class="btn primary" onclick="newManual()">Nouvelle note (récitation, examen…)</button>
+${t.entries.length?t.entries.map((x,i)=>`<div class="card"><h3>${esc(x.title)}</h3><p style="margin:0 0 8px"><span class="tag">${CAT_LBL[x.cat]}</span>${x.period?`<span class="tag">${esc(x.period)}</span>`:''}<span class="tag">sur ${fp(x.max)}</span></p><p class="hint" style="margin:0 0 10px">${Object.keys(x.notes).length} note${Object.keys(x.notes).length>1?'s':''} saisie${Object.keys(x.notes).length>1?'s':''} sur ${t.students.length} élèves</p>
+<button class="btn small primary" onclick="editManual(${i})">Saisir / modifier les notes</button> <button class="btn small danger" onclick="delManual('${esc(x.id)}')">Supprimer</button></div>`).join(''):'<p class="muted">Aucune note manuelle pour le moment.</p>'}`;
+  return `<button class="back" onclick="S.mm.edit=null;render()">‹ Retour à la liste</button>
+<h2>${e.id?'Modifier la note':'Nouvelle note'}</h2>
+${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+<label for="mt">Titre</label><input type="text" id="mt" placeholder="ex : Récitation 1, Examen de l'étape" value="${esc(e.title)}" oninput="S.mm.edit.title=this.value">
+<label for="mc">Catégorie</label><select id="mc" onchange="S.mm.edit.cat=this.value">${CATS.map(k=>`<option value="${k}" ${e.cat===k?'selected':''}>${CAT_LBL[k]}</option>`).join('')}</select>
+<label for="mp">Période</label><select id="mp" onchange="S.mm.edit.period=this.value"><option value="">— Aucune —</option>${t.periods.map(p=>`<option ${p===e.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+<label for="mx">Note sur (total de points)</label><input type="number" id="mx" min="1" step="0.5" value="${e.max}" oninput="S.mm.edit.max=+this.value">
+<h3 style="margin-top:16px">Notes des élèves</h3>
+<p class="hint">Laisse vide si l'élève n'a pas été noté (absent) : sa note ne compte pas. Écris 0 pour un vrai zéro.</p>
+${t.students.length?t.students.map(s=>`<div class="row"><span class="grow">${esc(s.name)}</span><input type="number" inputmode="decimal" min="0" step="0.25" style="width:90px" placeholder="—" value="${e.notes[s.pseudo]===undefined?'':e.notes[s.pseudo]}" oninput="manNote('${esc(s.pseudo)}',this.value)"> <span class="muted">/ ${fp(e.max)}</span></div>`).join(''):'<p class="muted">Aucun élève inscrit.</p>'}
+<p></p><button class="btn primary" onclick="saveManual()">Enregistrer</button>`}
+function manNote(pk,v){if(v==='')delete S.mm.edit.notes[pk];else S.mm.edit.notes[pk]=v}
+async function saveManual(){
+  const t=S.mm;
+  try{await api('/api/classes/'+t.cid+'/manual','POST',t.edit);openManual(t.cid)}catch(e){S.err=e.message;render()}
+}
+async function delManual(id){
+  if(!confirm('Supprimer cette note et toutes les notes saisies ?'))return;
+  try{await api('/api/classes/'+S.mm.cid+'/manual/'+id,'DELETE');openManual(S.mm.cid)}catch(e){S.err=e.message;render()}
+}
 
 /* ---------- Professeur : chat de la classe ---------- */
 async function openTChat(id){
@@ -1292,6 +1369,7 @@ ${mascot('hello','Écris tes questions, je m\'occupe du reste !',84,'small')}
 <label for="f4">Type</label><select id="f4" onchange="setMode(this.value)"><option value="quiz" ${d.mode==='quiz'?'selected':''}>Quiz (en classe, chronométré)</option><option value="devoir" ${d.mode==='devoir'?'selected':''}>Devoir (à la maison)</option><option value="libelle" ${lib?'selected':''}>Libellé seul (consigne sans quiz)</option></select>
 <label for="f2">Matière</label><select id="f2" onchange="S.d.subject=this.value">${SUBJECTS.map(s=>`<option ${s===d.subject?'selected':''}>${esc(s)}</option>`).join('')}</select>
 ${lib?'':`<label for="f8">Période (pour le carnet de notes)</label><select id="f8" onchange="S.d.period=this.value"><option value="">— Aucune —</option>${((S.tc&&S.tc.class&&S.tc.class.periods)||[]).map(x=>`<option ${x===d.period?'selected':''}>${esc(x)}</option>`).join('')}</select>
+<label for="f10">Catégorie de note (bulletin sur 100)</label><select id="f10" onchange="S.d.cat=this.value"><option value="">Automatique (${d.mode==='devoir'?'Devoir':'Quiz'})</option>${CATS.map(k=>`<option value="${k}" ${d.cat===k?'selected':''}>${CAT_LBL[k]}</option>`).join('')}</select>
 <label for="f9">Coefficient</label><select id="f9" onchange="S.d.coef=+this.value">${[0.5,1,1.5,2,3,4,5].map(x=>`<option value="${x}" ${x===d.coef?'selected':''}>${fmtS(x)}</option>`).join('')}</select>
 <label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">`}
 <label for="f6">Date limite (facultatif)</label><input type="date" id="f6" value="${esc(d.deadline)}" oninput="S.d.deadline=this.value">
