@@ -51,6 +51,32 @@ if (process.env.DATABASE_URL) {
   console.warn('Stockage dans un fichier local (pas de DATABASE_URL). Les données peuvent être perdues sur un hébergement gratuit.');
 }
 
+/* Cache de lecture de 5 s devant la base (un seul serveur : chaque écriture invalide le cache, donc rien de périmé).
+   Évite que 150 élèves qui interrogent le chat toutes les 6 s ne saturent la base. */
+{
+  const raw = kv, C = new Map(), L = new Map(), TTL = 5000; let ver = 0;
+  kv = {
+    onSet: null,
+    init: () => raw.init(),
+    async get(k) {
+      const c = C.get(k);
+      if (c && Date.now() - c.t < TTL) return c.v === null ? null : structuredClone(c.v);
+      const v0 = ver, v = await raw.get(k);
+      if (v0 === ver) { if (C.size > 3000) C.clear(); C.set(k, { t: Date.now(), v: v === null ? null : structuredClone(v) }); }
+      return v;
+    },
+    async list(p) {
+      const c = L.get(p);
+      if (c && Date.now() - c.t < TTL) return c.v.slice();
+      const v0 = ver, v = await raw.list(p);
+      if (v0 === ver) { if (L.size > 200) L.clear(); L.set(p, { t: Date.now(), v: v.slice() }); }
+      return v;
+    },
+    async set(k, v) { ver++; C.delete(k); L.clear(); try { await raw.set(k, v); } finally { ver++; C.delete(k); L.clear(); if (kv.onSet) kv.onSet(k, v); } },
+    async del(k) { ver++; C.delete(k); L.clear(); try { await raw.del(k); } finally { ver++; C.delete(k); L.clear(); if (kv.onSet) kv.onSet(k); } },
+  };
+}
+
 /* ---------- Outils ---------- */
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const nameKey = n => norm(n).replace(/ /g, '-');
@@ -71,8 +97,8 @@ const str = (s, n) => String(s == null ? '' : s).slice(0, n);
 
 /* limite d'essais de connexion */
 const tries = new Map();
-function limited(req, max = 15) {
-  const ip = req.ip, now = Date.now();
+function limited(req, max = 15, bucket = '') {
+  const ip = req.ip + '|' + bucket, now = Date.now();
   const rec = (tries.get(ip) || []).filter(t => now - t < 60000);
   rec.push(now); tries.set(ip, rec);
   if (tries.size > 5000) tries.clear();
@@ -226,10 +252,11 @@ const DEFAULT_PERIODS = ['1re étape', '2e étape', '3e étape'];
 const periodsOf = c => (c && Array.isArray(c.periods) && c.periods.length ? c.periods : DEFAULT_PERIODS);
 const pseudoKey = p => String(p || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9._-]/g, '');
 const stuKey = (cid, pk) => 'stu:' + cid + ':' + pk;
-function hashPw(pw, salt) { salt = salt || crypto.randomBytes(16).toString('hex'); return { salt, h: crypto.scryptSync(String(pw), salt, 32).toString('hex') }; }
-function checkPw(pw, rec) {
+const scryptA = (pw, salt) => new Promise((ok, ko) => crypto.scrypt(String(pw), salt, 32, (e, k) => e ? ko(e) : ok(k))); // asynchrone : le serveur reste fluide pendant que 100 élèves créent leur compte
+async function hashPw(pw, salt) { salt = salt || crypto.randomBytes(16).toString('hex'); return { salt, h: (await scryptA(pw, salt)).toString('hex') }; }
+async function checkPw(pw, rec) {
   if (!rec || !rec.salt || !rec.h) return false;
-  const a = crypto.scryptSync(String(pw), rec.salt, 32), b = Buffer.from(rec.h, 'hex');
+  const a = await scryptA(pw, rec.salt), b = Buffer.from(rec.h, 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 const lockMap = new Map();
@@ -276,17 +303,19 @@ const meanOf = v => { v = v.filter(x => x !== null); return v.length ? Math.roun
 
 /* Connexion unique : le code du professeur ouvre l'espace prof, un code de classe ouvre la liste de ses travaux */
 app.post('/api/login', wrap(async (req, res) => {
-  if (limited(req)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  // seuls les codes FAUX comptent : toute une classe sur le même wifi peut entrer son code sans être bloquée
+  const failKey = req.ip + '|lgfail', nowT = Date.now();
+  if ((tries.get(failKey) || []).filter(t => nowT - t < 60000).length >= 15) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const code = str(req.body.code, 100).trim();
   if (!code) return fail(res, 400, 'Entre ton code.');
   if (safeEq(code, TEACHER_CODE)) return res.json({ role: 'teacher', token: sign({ r: 't', exp: Date.now() + 30 * 864e5 }) });
   const cls = await kv.get('class:' + code.toUpperCase());
-  if (!cls) return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.');
+  if (!cls) { limited(req, 15, 'lgfail'); return fail(res, 404, 'Code introuvable. Vérifie-le avec ton professeur.'); }
   res.json({ role: 'class', class: { name: cls.name, level: cls.level || '' } });
 }));
 
 app.post('/api/student/register', wrap(async (req, res) => {
-  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  if (limited(req, 600, 'reg')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const cid = str(req.body.code, 8).toUpperCase(), cls = await kv.get('class:' + cid);
   if (!cls) return fail(res, 404, 'Code de classe introuvable.');
   const name = str(req.body.name, 80).trim().replace(/\s+/g, ' '), pseudo = str(req.body.pseudo, 20).trim(), pw = str(req.body.password, 64);
@@ -296,17 +325,17 @@ app.post('/api/student/register', wrap(async (req, res) => {
   if (pw.length < 4) return fail(res, 400, 'Le mot de passe doit avoir au moins 4 caractères.');
   if (await kv.get(stuKey(cid, pk))) return fail(res, 409, 'Ce pseudo est déjà pris dans la classe. Choisis-en un autre.');
   if ((await kv.list('stu:' + cid + ':')).length >= 400) return fail(res, 409, 'La classe est pleine. Préviens ton professeur.');
-  const rec = { name, pseudo: pk, ...hashPw(pw), created: Date.now() };
+  const rec = { name, pseudo: pk, ...(await hashPw(pw)), created: Date.now() };
   await kv.set(stuKey(cid, pk), rec);
   res.json({ token: studentToken(cid, pk), student: { name, pseudo: pk } });
 }));
 app.post('/api/student/login', wrap(async (req, res) => {
-  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  if (limited(req, 600, 'slg')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const cid = str(req.body.code, 8).toUpperCase(), pk = pseudoKey(str(req.body.pseudo, 20)), pw = str(req.body.password, 64);
   const lk = cid + ':' + pk;
   if (locked(lk)) return fail(res, 429, 'Trop d\'erreurs. Attends 10 minutes ou demande à ton professeur de réinitialiser ton mot de passe.');
   const rec = pk ? await kv.get(stuKey(cid, pk)) : null;
-  if (!rec || !checkPw(pw, rec)) { noteFail(lk); return fail(res, 401, 'Pseudo ou mot de passe incorrect.'); }
+  if (!rec || !(await checkPw(pw, rec))) { noteFail(lk); return fail(res, 401, 'Pseudo ou mot de passe incorrect.'); }
   res.json({ token: studentToken(cid, pk), student: { name: rec.name, pseudo: pk } });
 }));
 app.get('/api/student/me', sauth, wrap(async (req, res) => {
@@ -333,7 +362,7 @@ app.get('/api/student/history', sauth, wrap(async (req, res) => {
 const AVATARS = 12;
 const profileOf = r => ({ name: r.name, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '', pv: r.pv || 0 });
 app.put('/api/student/profile', sauth, wrap(async (req, res) => {
-  if (limited(req, 60)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  if (limited(req, 300, 'prof')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const rec = { ...req.st.rec };
   const b = req.body || {};
   if (b.clear) { delete rec.photo; delete rec.avatar; }
@@ -387,11 +416,8 @@ function inHours(cs) {
   return cs.from <= cs.to ? (n >= cs.from && n <= cs.to) : (n >= cs.from || n <= cs.to);
 }
 async function inQuiz(cid, sid) {
-  for (const q of await gradedQuizzes(cid)) {
-    const a = await kv.get(attKey(q.id, sid));
-    if (a && !a.finished) return true;
-  }
-  return false;
+  if (!String(sid).startsWith('u_')) return false;
+  return (await activeQuizTakers(cid)).has(sid.slice(2));
 }
 async function chatState(st) {
   const cls = await kv.get('class:' + st.cid), cs = chatSettings(cls || {});
@@ -506,7 +532,7 @@ app.post('/api/brief', sauth, wrap(async (req, res) => {
 }));
 
 app.post('/api/start', sauth, wrap(async (req, res) => {
-  if (limited(req, 120)) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
+  if (limited(req, 600, 'start')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const id = str(req.body.qid, 8).toUpperCase(), classId = req.st.cid, name = req.st.name, key = req.st.sid;
   const quiz = await kv.get('quiz:' + id);
   if (!quiz || quiz.draft || quiz.classId !== classId) return fail(res, 404, 'Travail introuvable.');
@@ -641,7 +667,7 @@ app.post('/api/classes/:id/students/:pk/reset', auth, wrap(async (req, res) => {
   if (!rec) return fail(res, 404, 'Élève introuvable.');
   const A = 'abcdefghjkmnpqrstuvwxyz23456789';
   const pw = Array.from({ length: 6 }, () => A[crypto.randomInt(A.length)]).join('');
-  await kv.set(stuKey(cid, pk), { ...rec, ...hashPw(pw) });
+  await kv.set(stuKey(cid, pk), { ...rec, ...(await hashPw(pw)) });
   lockMap.delete(cid + ':' + pk);
   res.json({ password: pw });
 }));
@@ -782,9 +808,10 @@ async function pushToClass(cid, { title, body, exclude, excludeSet, only, url, t
 }
 const chatAgg = new Map(); // classe -> { n, t } : messages récents regroupés dans une même notification
 const qtCache = new Map();
+kv.onSet = (k, v) => { if (k.startsWith('att:') && (!v || v.finished || !(v.answers && v.answers.length))) qtCache.clear(); }; // un quiz commence ou se termine : on recalcule tout de suite
 async function activeQuizTakers(cid) {
   const c = qtCache.get(cid);
-  if (c && Date.now() - c.t < 30000) return c.set;
+  if (c && Date.now() - c.t < 8000) return c.set;
   const set = new Set();
   try {
     for (const q of await gradedQuizzes(cid)) for (const k of await kv.list('att:' + q.id + ':')) {
