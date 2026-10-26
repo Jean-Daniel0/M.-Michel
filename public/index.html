@@ -116,6 +116,7 @@ h3{font-size:1.1rem}
 .sheet .sub{background:var(--soft);font-weight:700}
 .sheet .tot{background:var(--blue);color:var(--on-blue);font-weight:800}
 .sheet td.tot{font-size:1rem}
+.sheet .plus{border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.18);color:#fff;border-radius:6px;cursor:pointer;margin-left:6px;font-size:.9rem;line-height:1;padding:1px 6px}
 .sheet .cog{border:0;background:none;cursor:pointer;font-size:.9rem;padding:0 2px;color:var(--mute)}
 .grid.tight th,.grid.tight td{padding:5px 5px;font-size:.8rem}.grid.tight .nm{max-width:90px;overflow:hidden;text-overflow:ellipsis}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-6px 0 18px}
@@ -868,9 +869,9 @@ function vMyBul(b){
   if(!b||!b.periods.length)return '';
   const L=b.periods.length>2?b.periods:b.periods.filter(p=>p.period);
   return (L.length?L:b.periods).map(p=>`<div class="card"><h3 style="margin:0 0 6px">${p.period?esc(p.period):'Toutes les périodes'} · Bulletin</h3>
-<p style="margin:0 0 8px;font-size:1.3rem"><b>${fp(p.eq100)} / 100</b>${p.rank?` <span class="tag">${p.rank}${p.rank===1?'er':'e'} sur ${p.rankedCount}</span>`:''}</p>
+<p style="margin:0 0 8px;font-size:1.3rem"><b>${fp(p.pts)} / ${p.of}</b>${p.rank?` <span class="tag">${p.rank}${p.rank===1?'er':'e'} sur ${p.rankedCount}</span>`:''}</p>
 ${CATS.map(k=>p.cats[k].pts===null?'':`<p style="margin:2px 0;display:flex;justify-content:space-between"><span>${CAT_LBL[k]} <small class="muted">(${p.cats[k].n} note${p.cats[k].n>1?'s':''})</small></span><b>${fp(p.cats[k].pts)} / ${p.cats[k].of}</b></p>`).join('')}
-${p.of<CATS.reduce((a,k)=>a+b.grading.w[k],0)?`<p class="hint" style="margin:8px 0 0">Total provisoire : ${fp(p.pts)} sur ${p.of} points possibles pour l'instant. Il se complète avec les prochaines notes.</p>`:''}</div>`).join('')
+</div>`).join('')
 }
 function vMyNotes(){
   const t=S.mn;
@@ -1108,7 +1109,7 @@ function vCEdit(){const c=S.cd;return `<button class="back" onclick="enterTeache
 <h3 style="margin-top:18px">Barème du bulletin (sur ${CATS.reduce((t,k)=>t+(+c.gw[k]||0),0)})</h3>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${CATS.map(k=>`<div><label for="gw${k}">${CAT_LBL[k]}</label><input type="number" id="gw${k}" min="0" max="100" step="0.5" value="${c.gw[k]}" oninput="S.cd.gw['${k}']=+this.value||0"></div>`).join('')}</div>
 <p class="hint">Points de chaque catégorie. Par défaut : Examen 30, Quiz 30, Leçons 25, Devoirs 15 (total 100).</p>
-<label for="gab">Travail non fait ou élève absent</label><select id="gab" onchange="S.cd.absent=this.value"><option value="ns" ${c.absent!=='zero'?'selected':''}>Non noté : ne compte pas dans la moyenne</option><option value="zero" ${c.absent==='zero'?'selected':''}>Compte comme 0 une fois la date limite passée</option></select>
+
 <p class="hint">Un code unique est créé pour la classe. Tes élèves l'entrent sur la page d'accueil pour voir leurs travaux.</p>
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p><button class="btn primary" onclick="saveClass()">Enregistrer</button>`}
@@ -1208,35 +1209,35 @@ async function openBulletin(id,period){
 function blGroups(t){return CATS.map(k=>({k,cols:t.columns.filter(c=>c.cat===k)}))}
 function blCell(t,s,c){
   const x=s.cells[c.id];
-  if(!c.auto)return `<td class="in"><input type="number" inputmode="decimal" min="0" max="${c.max}" step="0.25" data-c="${esc(c.mid)}" data-s="${esc(s.pseudo)}" value="${x&&x.v!==undefined?x.v:''}" onchange="saveCell(this)" onkeydown="cellKey(event,this)" aria-label="${esc(c.title)} : ${esc(s.name)}"></td>`;
-  if(!x)return '<td class="au"></td>';
-  if(x.ip)return '<td class="au">…</td>';
-  return `<td class="au">${x.v===undefined?'*':fp(x.v)+(x.p?'*':'')+(x.z?'<small>(0)</small>':'')}</td>`;
+  if(c.auto&&!c.editable){
+    if(!x)return '<td class="au"></td>';
+    if(x.ip)return '<td class="au">…</td>';
+    return `<td class="au">${x.v===undefined?'*':fp(x.v)+(x.p?'*':'')}</td>`;
+  }
+  return `<td class="in"><input type="number" inputmode="decimal" min="0" max="${c.max}" step="0.25" data-c="${esc(c.id)}" data-s="${esc(s.pseudo)}" value="${x&&x.v!==undefined?x.v:''}" onchange="saveCell(this)" onkeydown="cellKey(event,this)" aria-label="${esc(c.title)} : ${esc(s.name)}"></td>`;
 }
 function vBulletin(){
-  const t=S.bl,g=t.grading,G=blGroups(t),cf=t.cf;
-  const colForm=cf?`<div class="card"><h3>${cf.mid?'Modifier la colonne':'Nouvelle colonne'}</h3>
-<label for="cft">Titre</label><input type="text" id="cft" placeholder="ex : Récitation 1, Examen" value="${esc(cf.title)}" oninput="S.bl.cf.title=this.value">
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label for="cfc">Catégorie</label><select id="cfc" onchange="S.bl.cf.cat=this.value">${CATS.map(k=>`<option value="${k}" ${cf.cat===k?'selected':''}>${CAT_LBL[k]}</option>`).join('')}</select></div>
-<div><label for="cfm">Sur combien ?</label><input type="number" id="cfm" min="1" step="0.5" value="${cf.max}" oninput="S.bl.cf.max=+this.value"></div></div>
+  const t=S.bl,g=t.grading,G=blGroups(t),cf=t.cf,tot=CATS.reduce((a,k)=>a+g.w[k],0);
+  const colForm=cf?`<div class="card"><h3>${cf.mid?'Modifier la colonne':'Nouvelle colonne'} · ${CAT_LBL[cf.cat]}</h3>
+<label for="cfm">Cette note est sur combien de points ?</label><input type="number" id="cfm" min="0.5" step="0.5" value="${cf.max}" oninput="S.bl.cf.max=+this.value">
 <label for="cfp">Période</label><select id="cfp" onchange="S.bl.cf.period=this.value"><option value="">— Aucune —</option>${t.periods.map(p=>`<option ${p===cf.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+<label for="cft">Nom (facultatif, pour toi)</label><input type="text" id="cft" placeholder="ex : Récitation 1" value="${esc(cf.title)}" oninput="S.bl.cf.title=this.value">
 ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 <p></p><button class="btn small primary" onclick="saveCol()">Enregistrer</button> <button class="btn small" onclick="S.bl.cf=null;S.err='';render()">Annuler</button>${cf.mid?` <button class="btn small danger" onclick="delCol('${esc(cf.mid)}')">Supprimer</button>`:''}</div>`:'';
   return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
 <h2>Bulletin · ${esc(t.class.name)}</h2>
-<div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap"><div style="flex:1;min-width:160px"><label for="bpf">Période</label>
-<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select></div>
-<button class="btn small primary" style="width:auto;margin:0 0 4px" onclick="newCol()">＋ Colonne</button></div>
+<label for="bpf">Période</label>
+<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
 ${S.err&&!cf?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 ${colForm}
-<p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/100 · cases grises : notes automatiques des quiz · cases blanches : à saisir (elles s'enregistrent seules). Fais défiler le tableau vers la droite.</p>
+<p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/${tot}. Les notes des quiz du site (grises) arrivent toutes seules. Les autres cases sont à taper : elles s'enregistrent seules. Touche ＋ pour ajouter une note. Fais défiler vers la droite.</p>
 ${t.students.length?`<div class="sheetw"><table class="grid sheet"><thead>
-<tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh gh-${x.k}">${CAT_LBL[x.k]} · ${g.w[x.k]} pts</th>`).join('')}<th rowspan="2" class="tot">Total<br><small>points</small></th><th rowspan="2">Rang</th></tr>
-<tr>${G.map(x=>x.cols.map(c=>`<th class="ch" title="${esc(c.title)}">${c.auto?'':`<button type="button" class="cog" aria-label="Modifier ${esc(c.title)}" onclick="editCol('${esc(c.mid)}')">⚙</button>`}<span>${esc(c.title.length>16?c.title.slice(0,15)+'…':c.title)}</span><small>/${fp(c.max)}${c.coef!==1?' ×'+fp(c.coef):''}${c.auto?' · auto':''}</small></th>`).join('')+`<th class="sub">Sous-total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
-${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.eq100===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
+<tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh">${CAT_LBL[x.k]} · ${g.w[x.k]} <button type="button" class="plus" aria-label="Ajouter une note ${CAT_LBL[x.k]}" onclick="newCol('${x.k}')">＋</button></th>`).join('')}<th rowspan="2" class="tot">Total<br><small>/${tot}</small></th><th rowspan="2">Rang</th></tr>
+<tr>${G.map(x=>x.cols.map((c,i)=>`<th class="ch" title="${esc(c.title)}">${i+1}<small>/${fp(c.max)}</small>${c.auto?'':`<button type="button" class="cog" aria-label="Modifier cette colonne" onclick="editCol('${esc(c.mid)}')">⚙</button>`}</th>`).join('')+`<th class="sub">Total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
+${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.total===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
 </tbody></table></div>`:'<p class="muted">Aucun élève inscrit pour le moment. Ils apparaîtront ici dès qu\'ils créent leur compte.</p>'}
-<p class="hint">Chaque sous-total = moyenne des notes de la catégorie × ses points. Total = somme des sous-totaux : il grandit au fur et à mesure que tu ajoutes des notes. Le rang compare les élèves sur ce qui est déjà noté. * = correction à finir.</p>`}
-function newCol(){const t=S.bl;t.cf={mid:'',title:'',cat:'lecon',max:10,period:t.period||t.periods[0]||''};S.err='';render()}
+<p class="hint">Exemple : un quiz noté 2/5 puis un autre 3/5 donnent 5 dans « Quiz » (sur ${g.w.quiz}), et 5 au total sur ${tot} s'il n'y a pas d'autres notes. Chaque note s'ajoute aux précédentes. Un total de catégorie ne dépasse jamais son maximum. * = correction à finir.</p>`}
+function newCol(cat){const t=S.bl;t.cf={mid:'',title:'',cat,max:5,period:t.period||t.periods[0]||''};S.err='';render();window.scrollTo(0,0)}
 function editCol(mid){
   const t=S.bl,c=t.columns.find(x=>x.mid===mid);if(!c)return;
   t.cf={mid,title:c.title,cat:c.cat,max:c.max,period:c.period||''};S.err='';render();window.scrollTo(0,0);
@@ -1244,7 +1245,7 @@ function editCol(mid){
 async function saveCol(){
   const t=S.bl,f=t.cf,notes={};
   if(f.mid)t.students.forEach(s=>{const x=s.cells['m:'+f.mid];if(x&&x.v!==undefined)notes[s.pseudo]=x.v});
-  try{await api('/api/classes/'+t.class.id+'/manual','POST',{id:f.mid,title:f.title,cat:f.cat,max:f.max,period:f.period,notes});S.err='';openBulletin(t.class.id,t.period)}
+  try{await api('/api/classes/'+t.class.id+'/manual','POST',{id:f.mid,title:f.title||CAT_LBL[f.cat],cat:f.cat,max:f.max,period:f.period,notes});S.err='';openBulletin(t.class.id,t.period)}
   catch(e){S.err=e.message;render()}
 }
 async function delCol(mid){
@@ -1258,14 +1259,15 @@ function cellKey(e,inp){
   inp.blur();if(n){n.focus();try{n.select()}catch(x){}}
 }
 async function saveCell(inp){
-  const t=S.bl;inp.style.outline='';
+  const t=S.bl,col=inp.dataset.c;inp.style.outline='';
+  const url='/api/classes/'+t.class.id+(col.startsWith('q:')?'/override/'+col.slice(2):'/manual/'+col.slice(2))+'/note';
   try{
-    await api('/api/classes/'+t.class.id+'/manual/'+inp.dataset.c+'/note','PUT',{pseudo:inp.dataset.s,value:inp.value});
+    await api(url,'PUT',{pseudo:inp.dataset.s,value:inp.value});
     const f=await api('/api/classes/'+t.class.id+'/bulletin?period='+encodeURIComponent(t.period||''));
     f.students.forEach(s=>{
       const set=(k,v)=>{const td=document.querySelector('td[data-s="'+s.pseudo+'"][data-k="'+k+'"]');if(td)td.textContent=v};
       CATS.forEach(k=>set('sub:'+k,s.cats[k].pts===null?'':fp(s.cats[k].pts)));
-      set('tot',s.eq100===null?'':fp(s.pts));set('rank',s.rank||'');
+      set('tot',s.total===null?'':fp(s.pts));set('rank',s.rank||'');
     });
     t.students=f.students;t.classAvg=f.classAvg;
     const i=document.getElementById('blinfo');if(i)i.querySelector('b').textContent=fp(f.classAvg)||'—';
@@ -1425,8 +1427,8 @@ ${t.per.length?'':'<p class="muted">Aucun quiz dans cette classe pour le moment.
 
 /* ---------- Professeur : éditeur ---------- */
 function blankQ(t){return{t,q:'',opts:['','','',''],a:t==='vf'?'vrai':(t==='qcm'?0:''),why:false}}
-function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',draft:false,qs:[blankQ('qcm')],period:'',coef:1};S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}
-async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.d.coef=S.d.coef||1;S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
+function newQuiz(classId){S.d={id:'',classId,title:'',subject:SUBJECTS[0],mode:'quiz',minutes:15,deadline:'',draw:0,brief:'',draft:false,qs:[blankQ('qcm')],period:'',coef:1,max:5};S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}
+async function editQuiz(id){try{const r=await api('/api/quizzes/'+id);S.d=r.quiz;S.d.coef=S.d.coef||1;S.d.max=S.d.max||5;S.ai={text:'',count:10,types:['qcm','vf'],busy:false,msg:'',ok:false};S.err='';S.view='editor';render()}catch(e){S.err=e.message;render()}}
 function setMode(m){S.d.mode=m;if(m!=='libelle'&&!S.d.qs.length)S.d.qs=[blankQ('qcm')];if(m==='devoir'&&S.d.minutes===15)S.d.minutes=0;render()}
 function vEditor(){
   const d=S.d,lib=d.mode==='libelle';
@@ -1438,7 +1440,8 @@ ${mascot('hello','Écris tes questions, je m\'occupe du reste !',84,'small')}
 <label for="f2">Matière</label><select id="f2" onchange="S.d.subject=this.value">${SUBJECTS.map(s=>`<option ${s===d.subject?'selected':''}>${esc(s)}</option>`).join('')}</select>
 ${lib?'':`<label for="f8">Période (pour le carnet de notes)</label><select id="f8" onchange="S.d.period=this.value"><option value="">— Aucune —</option>${((S.tc&&S.tc.class&&S.tc.class.periods)||[]).map(x=>`<option ${x===d.period?'selected':''}>${esc(x)}</option>`).join('')}</select>
 <label for="f10">Catégorie de note (bulletin sur 100)</label><select id="f10" onchange="S.d.cat=this.value"><option value="">Automatique (${d.mode==='devoir'?'Devoir':'Quiz'})</option>${CATS.map(k=>`<option value="${k}" ${d.cat===k?'selected':''}>${CAT_LBL[k]}</option>`).join('')}</select>
-<label for="f9">Coefficient</label><select id="f9" onchange="S.d.coef=+this.value">${[0.5,1,1.5,2,3,4,5].map(x=>`<option value="${x}" ${x===d.coef?'selected':''}>${fmtS(x)}</option>`).join('')}</select>
+<label for="f11">Points de ce travail dans le bulletin (ex : 5 si la note est sur 5)</label><input type="number" id="f11" min="0.5" step="0.5" value="${d.max||5}" oninput="S.d.max=+this.value||5">
+<label for="f9">Coefficient (carnet sur 10)</label><select id="f9" onchange="S.d.coef=+this.value">${[0.5,1,1.5,2,3,4,5].map(x=>`<option value="${x}" ${x===d.coef?'selected':''}>${fmtS(x)}</option>`).join('')}</select>
 <label for="f5">Durée totale en minutes (0 = illimitée)</label><input type="number" id="f5" min="0" value="${d.minutes}" oninput="S.d.minutes=Math.max(0,+this.value||0)">`}
 <label for="f6">Date limite (facultatif)</label><input type="date" id="f6" value="${esc(d.deadline)}" oninput="S.d.deadline=this.value">
 ${lib?'':`<label for="f7">Questions tirées au hasard par élève (0 = toutes)</label><input type="number" id="f7" min="0" value="${d.draw}" oninput="S.d.draw=Math.max(0,+this.value||0)">

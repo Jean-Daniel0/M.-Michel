@@ -159,6 +159,7 @@ function cleanQuiz(d) {
     qs,
     draft: !!d.draft,
     period: str(d.period, 40).trim(),
+    max: Math.max(0.5, Math.min(100, Math.round((parseFloat(d.max) || 5) * 2) / 2)),
     cat: mode !== 'libelle' && ['quiz', 'devoir', 'lecon', 'examen'].includes(d.cat) ? d.cat : '',
     coef: Math.max(0.5, Math.min(10, Math.round((parseFloat(d.coef) || 1) * 2) / 2)),
     created: d.created || Date.now(),
@@ -746,45 +747,45 @@ async function bulletinData(c) {
   }
   const manual = await manualEntries(c.id);
   const studs = (await Promise.all((await kv.list('stu:' + c.id + ':')).map(k => kv.get(k)))).filter(Boolean);
-  const d = { quizzes, atts, manual, studs };
+  const ovr = {};
+  for (const k of await kv.list('ovr:' + c.id + ':')) { const o = await kv.get(k); if (o) ovr[k.slice(('ovr:' + c.id + ':').length)] = o.notes || {}; }
+  const d = { quizzes, atts, manual, studs, ovr };
   if (bulMemo.size > 50) bulMemo.clear();
   bulMemo.set(c.id, { t: Date.now(), d });
   return d;
 }
-// Une note par catégorie = moyenne (pondérée par les coefficients) de ses travaux, multipliée par les points de la catégorie.
-// Seules les catégories où l'élève a au moins une note comptent : le total s'accumule au fil de la période.
+// Modèle « points cumulés » : chaque travail vaut un nombre de points (ex : 2/5), la catégorie additionne les points gagnés
+// (plafonnés au total de la catégorie, ex : 30) et le grand total additionne les catégories (sur 100).
+const r2 = v => Math.round(v * 100) / 100;
 function bulRow(c, d, pseudo, period) {
-  const g = gradingOf(c), sid = 'u_' + pseudo, items = { quiz: [], devoir: [], lecon: [], examen: [] }, cells = {};
+  const g = gradingOf(c), sid = 'u_' + pseudo, sums = { quiz: 0, devoir: 0, lecon: 0, examen: 0 }, ns = { quiz: 0, devoir: 0, lecon: 0, examen: 0 }, cells = {};
   for (const q of d.quizzes) {
     if (period && q.period !== period) continue;
-    const a = d.atts[q.id] && d.atts[q.id][sid];
-    let f = null;
-    if (a && a.finished) { const sc = attScore(a); if (sc.score10 !== null) { f = sc.score10 / 10; cells['q:' + q.id] = { v: sc.score10, p: sc.p > 0 }; } }
+    const a = d.atts[q.id] && d.atts[q.id][sid], cat = catOf(q), max = q.max || 5, ov = d.ovr[q.id] && d.ovr[q.id][pseudo];
+    let e = null;
+    if (typeof ov === 'number') { e = ov; cells['q:' + q.id] = { v: ov, o: true }; }
+    else if (a && a.finished) { const sc = attScore(a); if (sc.score10 !== null) { e = r2(sc.score10 / 10 * max); cells['q:' + q.id] = { v: e, p: sc.p > 0 }; } else cells['q:' + q.id] = { p: true }; }
     else if (a) cells['q:' + q.id] = { ip: true };
-    else if (g.absent === 'zero' && deadlinePassed(q)) { f = 0; cells['q:' + q.id] = { v: 0, z: true }; }
-    if (a && a.finished && f === null) cells['q:' + q.id] = { p: true };
-    if (f !== null) items[catOf(q)].push({ f, coef: q.coef || 1 });
+    if (e !== null) { sums[cat] += e; ns[cat]++; }
   }
   for (const e of d.manual) {
     if (period && e.period !== period) continue;
     const v = e.notes && e.notes[pseudo];
-    if (typeof v === 'number' && e.max > 0 && CATS.includes(e.cat)) { items[e.cat].push({ f: v / e.max, coef: 1 }); cells['m:' + e.id] = { v }; }
+    if (typeof v === 'number' && CATS.includes(e.cat)) { sums[e.cat] += v; ns[e.cat]++; cells['m:' + e.id] = { v }; }
   }
-  const cats = {}; let pts = 0, of = 0;
+  const cats = {}; let pts = 0, of = 0, any = false;
   for (const k of CATS) {
-    const it = items[k], w = g.w[k];
-    if (!it.length || !w) { cats[k] = { n: it.length, avg: null, pts: null, of: w }; continue; }
-    const sw = it.reduce((t, x) => t + x.coef, 0), avg = it.reduce((t, x) => t + x.f * x.coef, 0) / sw;
-    cats[k] = { n: it.length, avg: Math.round(avg * 1000) / 1000, pts: r1(avg * w), of: w };
-    pts += avg * w; of += w;
+    const w = g.w[k], p = ns[k] ? Math.min(r2(sums[k]), w) : null;
+    cats[k] = { n: ns[k], pts: p, of: w }; of += w;
+    if (p !== null) { pts += p; any = true; }
   }
-  return { cats, cells, pts: r1(pts), of, eq100: of ? r1(pts / of * 100) : null };
+  return { cats, cells, pts: r2(pts), of, total: any ? r2(pts) : null };
 }
 function bulTable(c, d, period) {
   const rows = d.studs.map(r => ({ pseudo: r.pseudo, name: r.name, ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const ranked = rows.filter(r => r.eq100 !== null).sort((a, b) => b.eq100 - a.eq100);
-  ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].eq100 === r.eq100 ? ranked[i - 1].rank : i + 1; });
-  const v = ranked.map(r => r.eq100);
+  const ranked = rows.filter(r => r.total !== null).sort((a, b) => b.pts - a.pts);
+  ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].pts === r.pts ? ranked[i - 1].rank : i + 1; });
+  const v = ranked.map(r => r.pts);
   return { rows, rankedCount: ranked.length, classAvg: v.length ? r1(v.reduce((t, x) => t + x, 0) / v.length) : null };
 }
 app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
@@ -793,7 +794,7 @@ app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
   const period = str(req.query.period, 40), d = await bulletinData(c), t = bulTable(c, d, period);
   res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
     columns: [
-      ...d.quizzes.filter(q => !period || q.period === period).map(q => ({ id: 'q:' + q.id, title: q.title, cat: catOf(q), max: 10, auto: true, coef: q.coef || 1, period: q.period || '', created: q.created || 0 })),
+      ...d.quizzes.filter(q => !period || q.period === period).map(q => ({ id: 'q:' + q.id, title: q.title, cat: catOf(q), max: q.max || 5, auto: true, editable: catOf(q) !== 'quiz', coef: 1, period: q.period || '', created: q.created || 0 })),
       ...d.manual.filter(e => !period || e.period === period).map(e => ({ id: 'm:' + e.id, mid: e.id, title: e.title, cat: e.cat, max: e.max, auto: false, coef: 1, period: e.period || '', created: e.created || 0 })),
     ].sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || a.created - b.created) });
 }));
@@ -803,7 +804,7 @@ app.get('/api/student/bulletin', sauth, wrap(async (req, res) => {
   const d = await bulletinData(c), out = [];
   for (const p of ['', ...periodsOf(c)]) {
     const t = bulTable(c, d, p), me = t.rows.find(r => r.pseudo === req.st.pseudo);
-    if (me && me.eq100 !== null) out.push({ period: p, cats: me.cats, pts: me.pts, of: me.of, eq100: me.eq100, rank: me.rank, rankedCount: t.rankedCount });
+    if (me && me.total !== null) out.push({ period: p, cats: me.cats, pts: me.pts, of: me.of, rank: me.rank, rankedCount: t.rankedCount });
   }
   res.json({ grading: gradingOf(c), periods: out });
 }));
@@ -853,6 +854,22 @@ app.put('/api/classes/:id/manual/:mid/note', auth, wrap(async (req, res) => {
   await kv.set(manKey(cid, mid), e);
   res.json({ ok: true, value: e.notes[pk] === undefined ? '' : e.notes[pk] });
 }));
+app.put('/api/classes/:id/override/:qid/note', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), qid = str(req.params.qid, 8).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const q = await kv.get('quiz:' + qid);
+  if (!q || q.classId !== cid) return fail(res, 404, 'Travail introuvable.');
+  const pk = pseudoKey(str(req.body.pseudo, 20));
+  if (!(await kv.get(stuKey(cid, pk)))) return fail(res, 404, 'Élève introuvable.');
+  const o = (await kv.get('ovr:' + cid + ':' + qid)) || { notes: {} }, raw = req.body.value, max = q.max || 5;
+  if (raw === '' || raw === null || raw === undefined) delete o.notes[pk];
+  else {
+    const n = parseFloat(String(raw).replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > max) return fail(res, 400, 'La note doit être entre 0 et ' + max + '.');
+    o.notes[pk] = Math.round(n * 100) / 100;
+  }
+  await kv.set('ovr:' + cid + ':' + qid, o);
+  res.json({ ok: true });
+}));
 app.delete('/api/classes/:id/manual/:mid', auth, wrap(async (req, res) => {
   await kv.del(manKey(req.params.id.toUpperCase(), str(req.params.mid, 12).replace(/[^a-z0-9]/gi, '')));
   res.json({ ok: true });
@@ -900,6 +917,7 @@ app.delete('/api/classes/:id', auth, wrap(async (req, res) => {
   }
   await Promise.all((await kv.list('stu:' + id + ':')).map(k => kv.del(k)));
   await Promise.all((await kv.list('man:' + id + ':')).map(k => kv.del(k)));
+  await Promise.all((await kv.list('ovr:' + id + ':')).map(k => kv.del(k)));
   await kv.del(chatKey(id));
   await kv.del('class:' + id);
   res.json({ ok: true });
@@ -953,7 +971,7 @@ async function pushToClass(cid, { title, body, exclude, excludeSet, only, url, t
 }
 const chatAgg = new Map(); // classe -> { n, t } : messages récents regroupés dans une même notification
 const qtCache = new Map();
-kv.onSet = (k, v) => { if (/^(att|man|quiz|stu|class):/.test(k)) bulMemo.clear(); if (k.startsWith('att:') && (!v || v.finished || !(v.answers && v.answers.length))) qtCache.clear(); }; // un quiz commence ou se termine : on recalcule tout de suite
+kv.onSet = (k, v) => { if (/^(att|man|ovr|quiz|stu|class):/.test(k)) bulMemo.clear(); if (k.startsWith('att:') && (!v || v.finished || !(v.answers && v.answers.length))) qtCache.clear(); }; // un quiz commence ou se termine : on recalcule tout de suite
 async function activeQuizTakers(cid) {
   const c = qtCache.get(cid);
   if (c && Date.now() - c.t < 8000) return c.set;
