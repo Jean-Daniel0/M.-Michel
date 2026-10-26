@@ -102,6 +102,21 @@ h3{font-size:1.1rem}
 .tw .bd{padding:12px 14px 14px}
 .tw .acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
 .tw .acts .btn{flex:1;min-width:120px;text-align:center}
+.sheetw{overflow-x:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px}
+.sheet{border-collapse:separate;border-spacing:0;font-size:.82rem;width:max-content;min-width:100%}
+.sheet th,.sheet td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:5px 6px;text-align:center;white-space:nowrap}
+.sheet thead th{background:var(--soft);position:relative}
+.sheet th.nm,.sheet td.nm{position:sticky;left:0;z-index:2;background:var(--card);text-align:left;min-width:120px;max-width:150px;overflow:hidden;text-overflow:ellipsis;box-shadow:2px 0 4px rgba(0,0,0,.08)}
+.sheet thead th.nm{background:var(--soft);z-index:3}
+.sheet .gh{background:var(--blue);color:var(--on-blue)}
+.sheet .ch small{display:block;color:var(--mute);font-weight:400}
+.sheet td.au{background:rgba(120,130,160,.12);color:var(--ink)}
+.sheet td.in{padding:2px}
+.sheet td.in input{width:64px;box-sizing:border-box;padding:6px 4px;text-align:center;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font-size:.9rem}
+.sheet .sub{background:var(--soft);font-weight:700}
+.sheet .tot{background:var(--blue);color:var(--on-blue);font-weight:800}
+.sheet td.tot{font-size:1rem}
+.sheet .cog{border:0;background:none;cursor:pointer;font-size:.9rem;padding:0 2px;color:var(--mute)}
 .grid.tight th,.grid.tight td{padding:5px 5px;font-size:.8rem}.grid.tight .nm{max-width:90px;overflow:hidden;text-overflow:ellipsis}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:-6px 0 18px}
 .kp div{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 6px;text-align:center;box-shadow:0 3px 10px rgba(20,30,70,.08)}
@@ -1121,7 +1136,7 @@ ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
 <button class="btn primary" onclick="openCarnet('${esc(c.id)}')">Carnet de notes</button>
 <button class="btn primary" onclick="openBulletin('${esc(c.id)}')">Bulletin sur 100</button>
-<button class="btn" onclick="openManual('${esc(c.id)}')">Notes manuelles (récitations, examen…)</button>
+
 <button class="btn" onclick="openStuds('${esc(c.id)}')">Élèves inscrits</button>
 <button class="btn" onclick="openTChat('${esc(c.id)}')">Chat de la classe</button>
 <button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
@@ -1187,22 +1202,75 @@ const SHORT={quiz:'Quiz',devoir:'Dev.',lecon:'Leç.',examen:'Exam.'};
 const fp=v=>v===null||v===undefined?'':String(v).replace('.',',');
 async function openBulletin(id,period){
   app().innerHTML='<p class="muted">Chargement…</p>';
-  try{S.bl=await api('/api/classes/'+id+'/bulletin?period='+encodeURIComponent(period||''));S.err='';S.view='bulletin';render()}
+  try{S.bl=await api('/api/classes/'+id+'/bulletin?period='+encodeURIComponent(period||''));S.bl.cf=null;S.err='';S.view='bulletin';render()}
   catch(e){S.err=e.message;S.view='tclass';render()}
 }
+function blGroups(t){return CATS.map(k=>({k,cols:t.columns.filter(c=>c.cat===k)}))}
+function blCell(t,s,c){
+  const x=s.cells[c.id];
+  if(!c.auto)return `<td class="in"><input type="number" inputmode="decimal" min="0" max="${c.max}" step="0.25" data-c="${esc(c.mid)}" data-s="${esc(s.pseudo)}" value="${x&&x.v!==undefined?x.v:''}" onchange="saveCell(this)" onkeydown="cellKey(event,this)" aria-label="${esc(c.title)} : ${esc(s.name)}"></td>`;
+  if(!x)return '<td class="au"></td>';
+  if(x.ip)return '<td class="au">…</td>';
+  return `<td class="au">${x.v===undefined?'*':fp(x.v)+(x.p?'*':'')+(x.z?'<small>(0)</small>':'')}</td>`;
+}
 function vBulletin(){
-  const t=S.bl,g=t.grading,tot=CATS.reduce((a,k)=>a+g.w[k],0);
+  const t=S.bl,g=t.grading,G=blGroups(t),cf=t.cf;
+  const colForm=cf?`<div class="card"><h3>${cf.mid?'Modifier la colonne':'Nouvelle colonne'}</h3>
+<label for="cft">Titre</label><input type="text" id="cft" placeholder="ex : Récitation 1, Examen" value="${esc(cf.title)}" oninput="S.bl.cf.title=this.value">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label for="cfc">Catégorie</label><select id="cfc" onchange="S.bl.cf.cat=this.value">${CATS.map(k=>`<option value="${k}" ${cf.cat===k?'selected':''}>${CAT_LBL[k]}</option>`).join('')}</select></div>
+<div><label for="cfm">Sur combien ?</label><input type="number" id="cfm" min="1" step="0.5" value="${cf.max}" oninput="S.bl.cf.max=+this.value"></div></div>
+<label for="cfp">Période</label><select id="cfp" onchange="S.bl.cf.period=this.value"><option value="">— Aucune —</option>${t.periods.map(p=>`<option ${p===cf.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
+<p></p><button class="btn small primary" onclick="saveCol()">Enregistrer</button> <button class="btn small" onclick="S.bl.cf=null;S.err='';render()">Annuler</button>${cf.mid?` <button class="btn small danger" onclick="delCol('${esc(cf.mid)}')">Supprimer</button>`:''}</div>`:'';
   return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
-<h2>Bulletin sur 100 · ${esc(t.class.name)}</h2>
-<label for="bpf">Période</label>
-<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
-<div class="card"><p style="margin:0">${t.students.length} élève${t.students.length>1?'s':''} · ${t.items.length} note${t.items.length>1?'s':''} dans la période</p>
-<p style="margin:4px 0 0">Moyenne de la classe : <b>${fp(t.classAvg)||'—'} / 100</b></p>
-<p class="hint" style="margin:6px 0 0">Barème : ${CATS.map(k=>`${CAT_LBL[k]} ${g.w[k]}`).join(' · ')} (total ${tot}). Chaque catégorie = moyenne de ses notes × ses points. Le total s'accumule : tant qu'il manque une catégorie (ex : l'examen), « Total » est sur moins de ${tot} et « /100 » le ramène sur 100.</p></div>
-${t.students.length?`<div style="overflow-x:auto;margin:0 0 14px"><table class="grid tight"><thead><tr><th>#</th><th>Élève</th>${CATS.map(k=>`<th>${SHORT[k]}<br><small>/${g.w[k]}</small></th>`).join('')}<th>Total</th><th>/100</th></tr></thead><tbody>
-${t.students.map(s=>`<tr><td>${s.rank||''}</td><td class="nm">${esc(s.name)}</td>${CATS.map(k=>`<td>${s.cats[k].pts===null?'':fp(s.cats[k].pts)+(s.cats[k].n>1?`<small> (${s.cats[k].n})</small>`:'')}</td>`).join('')}<td>${s.eq100===null?'':fp(s.pts)+'<small>/'+s.of+'</small>'}</td><td><b>${fp(s.eq100)}</b></td></tr>`).join('')}
-</tbody></table></div><p class="hint">Les chiffres entre parenthèses = nombre de notes dans la catégorie.</p>`:'<p class="muted">Aucun élève inscrit.</p>'}
-<button class="btn" onclick="openManual('${esc(t.class.id)}')">Saisir des notes manuelles</button>`}
+<h2>Bulletin · ${esc(t.class.name)}</h2>
+<div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap"><div style="flex:1;min-width:160px"><label for="bpf">Période</label>
+<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select></div>
+<button class="btn small primary" style="width:auto;margin:0 0 4px" onclick="newCol()">＋ Colonne</button></div>
+${S.err&&!cf?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
+${colForm}
+<p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/100 · cases grises : notes automatiques des quiz · cases blanches : à saisir (elles s'enregistrent seules). Fais défiler le tableau vers la droite.</p>
+${t.students.length?`<div class="sheetw"><table class="grid sheet"><thead>
+<tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh gh-${x.k}">${CAT_LBL[x.k]} · ${g.w[x.k]} pts</th>`).join('')}<th rowspan="2" class="tot">Total<br><small>points</small></th><th rowspan="2">Rang</th></tr>
+<tr>${G.map(x=>x.cols.map(c=>`<th class="ch" title="${esc(c.title)}">${c.auto?'':`<button type="button" class="cog" aria-label="Modifier ${esc(c.title)}" onclick="editCol('${esc(c.mid)}')">⚙</button>`}<span>${esc(c.title.length>16?c.title.slice(0,15)+'…':c.title)}</span><small>/${fp(c.max)}${c.coef!==1?' ×'+fp(c.coef):''}${c.auto?' · auto':''}</small></th>`).join('')+`<th class="sub">Sous-total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
+${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.eq100===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
+</tbody></table></div>`:'<p class="muted">Aucun élève inscrit pour le moment. Ils apparaîtront ici dès qu\'ils créent leur compte.</p>'}
+<p class="hint">Chaque sous-total = moyenne des notes de la catégorie × ses points. Total = somme des sous-totaux : il grandit au fur et à mesure que tu ajoutes des notes. Le rang compare les élèves sur ce qui est déjà noté. * = correction à finir.</p>`}
+function newCol(){const t=S.bl;t.cf={mid:'',title:'',cat:'lecon',max:10,period:t.period||t.periods[0]||''};S.err='';render()}
+function editCol(mid){
+  const t=S.bl,c=t.columns.find(x=>x.mid===mid);if(!c)return;
+  t.cf={mid,title:c.title,cat:c.cat,max:c.max,period:c.period||''};S.err='';render();window.scrollTo(0,0);
+}
+async function saveCol(){
+  const t=S.bl,f=t.cf,notes={};
+  if(f.mid)t.students.forEach(s=>{const x=s.cells['m:'+f.mid];if(x&&x.v!==undefined)notes[s.pseudo]=x.v});
+  try{await api('/api/classes/'+t.class.id+'/manual','POST',{id:f.mid,title:f.title,cat:f.cat,max:f.max,period:f.period,notes});S.err='';openBulletin(t.class.id,t.period)}
+  catch(e){S.err=e.message;render()}
+}
+async function delCol(mid){
+  if(!confirm('Supprimer cette colonne et toutes ses notes ?'))return;
+  try{await api('/api/classes/'+S.bl.class.id+'/manual/'+mid,'DELETE');openBulletin(S.bl.class.id,S.bl.period)}catch(e){S.err=e.message;render()}
+}
+function cellKey(e,inp){
+  if(e.key!=='Enter'&&e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
+  e.preventDefault();
+  const all=[...document.querySelectorAll('input[data-c="'+inp.dataset.c+'"]')],i=all.indexOf(inp),n=all[e.key==='ArrowUp'?i-1:i+1];
+  inp.blur();if(n){n.focus();try{n.select()}catch(x){}}
+}
+async function saveCell(inp){
+  const t=S.bl;inp.style.outline='';
+  try{
+    await api('/api/classes/'+t.class.id+'/manual/'+inp.dataset.c+'/note','PUT',{pseudo:inp.dataset.s,value:inp.value});
+    const f=await api('/api/classes/'+t.class.id+'/bulletin?period='+encodeURIComponent(t.period||''));
+    f.students.forEach(s=>{
+      const set=(k,v)=>{const td=document.querySelector('td[data-s="'+s.pseudo+'"][data-k="'+k+'"]');if(td)td.textContent=v};
+      CATS.forEach(k=>set('sub:'+k,s.cats[k].pts===null?'':fp(s.cats[k].pts)));
+      set('tot',s.eq100===null?'':fp(s.pts));set('rank',s.rank||'');
+    });
+    t.students=f.students;t.classAvg=f.classAvg;
+    const i=document.getElementById('blinfo');if(i)i.querySelector('b').textContent=fp(f.classAvg)||'—';
+  }catch(e){inp.style.outline='2px solid #d4122f';alert(e.message)}
+}
 
 async function openManual(id){
   app().innerHTML='<p class="muted">Chargement…</p>';

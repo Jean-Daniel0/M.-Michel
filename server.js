@@ -754,19 +754,21 @@ async function bulletinData(c) {
 // Une note par catégorie = moyenne (pondérée par les coefficients) de ses travaux, multipliée par les points de la catégorie.
 // Seules les catégories où l'élève a au moins une note comptent : le total s'accumule au fil de la période.
 function bulRow(c, d, pseudo, period) {
-  const g = gradingOf(c), sid = 'u_' + pseudo, items = { quiz: [], devoir: [], lecon: [], examen: [] };
+  const g = gradingOf(c), sid = 'u_' + pseudo, items = { quiz: [], devoir: [], lecon: [], examen: [] }, cells = {};
   for (const q of d.quizzes) {
     if (period && q.period !== period) continue;
     const a = d.atts[q.id] && d.atts[q.id][sid];
     let f = null;
-    if (a && a.finished) { const sc = attScore(a); if (sc.score10 !== null) f = sc.score10 / 10; }
-    else if (g.absent === 'zero' && deadlinePassed(q)) f = 0;
+    if (a && a.finished) { const sc = attScore(a); if (sc.score10 !== null) { f = sc.score10 / 10; cells['q:' + q.id] = { v: sc.score10, p: sc.p > 0 }; } }
+    else if (a) cells['q:' + q.id] = { ip: true };
+    else if (g.absent === 'zero' && deadlinePassed(q)) { f = 0; cells['q:' + q.id] = { v: 0, z: true }; }
+    if (a && a.finished && f === null) cells['q:' + q.id] = { p: true };
     if (f !== null) items[catOf(q)].push({ f, coef: q.coef || 1 });
   }
   for (const e of d.manual) {
     if (period && e.period !== period) continue;
     const v = e.notes && e.notes[pseudo];
-    if (typeof v === 'number' && e.max > 0 && CATS.includes(e.cat)) items[e.cat].push({ f: v / e.max, coef: 1 });
+    if (typeof v === 'number' && e.max > 0 && CATS.includes(e.cat)) { items[e.cat].push({ f: v / e.max, coef: 1 }); cells['m:' + e.id] = { v }; }
   }
   const cats = {}; let pts = 0, of = 0;
   for (const k of CATS) {
@@ -776,7 +778,7 @@ function bulRow(c, d, pseudo, period) {
     cats[k] = { n: it.length, avg: Math.round(avg * 1000) / 1000, pts: r1(avg * w), of: w };
     pts += avg * w; of += w;
   }
-  return { cats, pts: r1(pts), of, eq100: of ? r1(pts / of * 100) : null };
+  return { cats, cells, pts: r1(pts), of, eq100: of ? r1(pts / of * 100) : null };
 }
 function bulTable(c, d, period) {
   const rows = d.studs.map(r => ({ pseudo: r.pseudo, name: r.name, ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
@@ -790,7 +792,10 @@ app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
   if (!c) return fail(res, 404, 'Classe introuvable.');
   const period = str(req.query.period, 40), d = await bulletinData(c), t = bulTable(c, d, period);
   res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
-    items: [...d.quizzes.filter(q => !period || q.period === period).map(q => ({ title: q.title, cat: catOf(q), auto: true })), ...d.manual.filter(e => !period || e.period === period).map(e => ({ title: e.title, cat: e.cat, auto: false }))] });
+    columns: [
+      ...d.quizzes.filter(q => !period || q.period === period).map(q => ({ id: 'q:' + q.id, title: q.title, cat: catOf(q), max: 10, auto: true, coef: q.coef || 1, period: q.period || '', created: q.created || 0 })),
+      ...d.manual.filter(e => !period || e.period === period).map(e => ({ id: 'm:' + e.id, mid: e.id, title: e.title, cat: e.cat, max: e.max, auto: false, coef: 1, period: e.period || '', created: e.created || 0 })),
+    ].sort((a, b) => CATS.indexOf(a.cat) - CATS.indexOf(b.cat) || a.created - b.created) });
 }));
 app.get('/api/student/bulletin', sauth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.st.cid);
@@ -830,6 +835,23 @@ app.post('/api/classes/:id/manual', auth, wrap(async (req, res) => {
   const e = { id, title, cat, period, max, notes, created: old ? old.created : Date.now() };
   await kv.set(manKey(c.id, id), e);
   res.json({ entry: e });
+}));
+app.put('/api/classes/:id/manual/:mid/note', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), mid = str(req.params.mid, 12).replace(/[^a-z0-9]/gi, '');
+  const e = await kv.get(manKey(cid, mid));
+  if (!e) return fail(res, 404, 'Colonne introuvable.');
+  const pk = pseudoKey(str(req.body.pseudo, 20));
+  if (!(await kv.get(stuKey(cid, pk)))) return fail(res, 404, 'Élève introuvable.');
+  e.notes = e.notes || {};
+  const raw = req.body.value;
+  if (raw === '' || raw === null || raw === undefined) delete e.notes[pk];
+  else {
+    const n = parseFloat(String(raw).replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > e.max) return fail(res, 400, 'La note doit être entre 0 et ' + e.max + '.');
+    e.notes[pk] = Math.round(n * 100) / 100;
+  }
+  await kv.set(manKey(cid, mid), e);
+  res.json({ ok: true, value: e.notes[pk] === undefined ? '' : e.notes[pk] });
 }));
 app.delete('/api/classes/:id/manual/:mid', auth, wrap(async (req, res) => {
   await kv.del(manKey(req.params.id.toUpperCase(), str(req.params.mid, 12).replace(/[^a-z0-9]/gi, '')));
