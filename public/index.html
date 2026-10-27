@@ -472,7 +472,7 @@ function render(){
   window.scrollTo(0,0);
   if(S.view==='home')setTimeout(reveal,30);
   if(S.view==='take')tick();
-  if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(showPushPopup,1200)}else closePushPopup();
+  if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(()=>{if(S.stu&&!S.stu.grp)showGrpPopup();else showPushPopup()},800)}else{closePushPopup();closeGrpPopup()}
 }
 function setErr(m){S.err=m;S.busy=false;render()}
 
@@ -614,6 +614,8 @@ function vProfile(){
 <h2>Mon profil</h2>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <div class="card" style="text-align:center">${avatarH(u,96)}<p style="margin:8px 0 0"><b>${esc(u.name)}</b></p></div>
+<div class="card"><h3>Ma classe</h3><p class="hint" style="margin:0 0 8px">Choisis ton groupe : ton professeur sépare les notes et les listes entre le groupe A et le groupe B.</p>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${['A','B'].map(g=>`<button type="button" class="btn ${u.grp===g?'primary':''}" aria-pressed="${u.grp===g}" onclick="setGrp('${g}')">${esc(S.cls.name)} ${g}</button>`).join('')}</div></div>
 <div class="card"><h3>Choisir un avatar</h3>
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${AV.map((e,i)=>`<button type="button" aria-label="Avatar ${i+1}" onclick="setAvatar(${i})" style="border:2px solid ${u.avatar===i&&!u.photo?'var(--blue)':'transparent'};background:none;padding:2px;border-radius:50%;cursor:pointer">${avatarH({avatar:i},44)}</button>`).join('')}</div></div>
 <div class="card"><h3>Ou ma photo</h3>
@@ -624,6 +626,18 @@ ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 async function saveProfile(b){
   try{const r=await api('/api/student/profile','PUT',b);Object.assign(S.stu,{avatar:r.profile.avatar,photo:r.profile.photo,pv:r.profile.pv});S.prof=S.prof||{};delete S.prof[S.stu.pseudo];S.err='';render()}
   catch(e){S.err=e.message;render()}
+}
+async function setGrp(g){
+  try{const r=await api('/api/student/profile','PUT',{grp:g});S.stu.grp=r.grp;S.err='';closeGrpPopup();render()}
+  catch(e){S.err=e.message;render()}
+}
+function closeGrpPopup(){const e=document.getElementById('gpop');if(e)e.remove()}
+function showGrpPopup(){
+  if(!S.stu||S.view!=='devoirs'||S.stu.grp||document.getElementById('gpop'))return;
+  const d=document.createElement('div');d.id='gpop';d.setAttribute('role','dialog');d.setAttribute('aria-modal','true');d.setAttribute('aria-label','Choisis ton groupe');
+  d.style.cssText='position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,20,60,.72)';
+  d.innerHTML=`<div style="max-width:420px;width:100%;background:var(--card);color:var(--ink);border-radius:20px;padding:22px;box-shadow:0 14px 40px rgba(0,0,0,.4);text-align:center"><div style="font-size:2.4rem" aria-hidden="true">🎓</div><h3 style="margin:6px 0 4px">Dans quel groupe es-tu ?</h3><p class="hint" style="margin:0 0 14px">Ton professeur sépare les notes de la classe en deux groupes. Choisis le tien (tu pourras le changer dans ton profil).</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${['A','B'].map(g=>`<button type="button" class="btn primary" style="font-size:1.1rem;padding:16px 8px" onclick="setGrp('${g}');setTimeout(showPushPopup,500)">${esc(S.cls.name)} ${g}</button>`).join('')}</div></div>`;
+  document.body.appendChild(d);
 }
 function setAvatar(i){saveProfile({avatar:i})}
 function clearProfile(){saveProfile({clear:true})}
@@ -1136,11 +1150,11 @@ function vTClass(){
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <button class="btn primary" onclick="newQuiz('${esc(c.id)}')">Nouveau devoir, quiz ou libellé</button>
 <button class="btn primary" onclick="openCarnet('${esc(c.id)}')">Carnet de notes</button>
-<button class="btn primary" onclick="openBulletin('${esc(c.id)}')">Bulletin sur 100</button>
+<button class="btn primary" onclick="openBulletin('${esc(c.id)}','','')">Bulletin sur 100</button>
 
-<button class="btn" onclick="openStuds('${esc(c.id)}')">Élèves inscrits</button>
+<button class="btn" onclick="openStuds('${esc(c.id)}','')">Élèves inscrits</button>
 <button class="btn" onclick="openTChat('${esc(c.id)}')">Chat de la classe</button>
-<button class="btn" onclick="openStats('${esc(c.id)}')">Statistiques de la classe</button>
+<button class="btn" onclick="openStats('${esc(c.id)}','')">Statistiques de la classe</button>
 ${L.length?L.map(q=>`<div class="card">
 <h3>${esc(q.title)}</h3>
 <p style="margin:0 0 8px">${q.draft?'<span class="tag warn">Brouillon : invisible pour les élèves</span>':''}<span class="tag">${esc(q.subject)}</span><span class="tag">${TYPE[q.mode]||'Quiz'}</span>${q.deadline?`<span class="tag">Avant le ${fmtDate(q.deadline)}</span>`:''}${q.period?`<span class="tag">${esc(q.period)}</span>`:''}${q.coef&&q.coef!==1?`<span class="tag">coef ${fmtS(q.coef)}</span>`:''}</p>
@@ -1200,10 +1214,12 @@ ${t.byPeriod.filter(b=>b.n).map(b=>`<p style="margin:4px 0 0"><span class="tag">
 
 /* ---------- Professeur : bulletin sur 100 et notes manuelles ---------- */
 const SHORT={quiz:'Quiz',devoir:'Dev.',lecon:'Leç.',examen:'Exam.'};
+function grpSel(id,cur,fn,cls){return `<label for="${id}">Groupe</label><select id="${id}" onchange="${fn}(this.value)"><option value="">Tous (A et B)</option><option value="A" ${cur==='A'?'selected':''}>${esc(cls)} A</option><option value="B" ${cur==='B'?'selected':''}>${esc(cls)} B</option><option value="none" ${cur==='none'?'selected':''}>Sans groupe</option></select>`}
 const fp=v=>v===null||v===undefined?'':String(v).replace('.',',');
-async function openBulletin(id,period){
+async function openBulletin(id,period,grp){
   app().innerHTML='<p class="muted">Chargement…</p>';
-  try{S.bl=await api('/api/classes/'+id+'/bulletin?period='+encodeURIComponent(period||''));S.bl.cf=null;S.err='';S.view='bulletin';render()}
+  if(grp===undefined)grp=(S.bl&&S.bl.class.id===id?S.bl.grp:'')||'';
+  try{S.bl=await api('/api/classes/'+id+'/bulletin?period='+encodeURIComponent(period||'')+'&grp='+grp);S.bl.cf=null;S.err='';S.view='bulletin';render()}
   catch(e){S.err=e.message;S.view='tclass';render()}
 }
 function blGroups(t){return CATS.map(k=>({k,cols:t.columns.filter(c=>c.cat===k)}))}
@@ -1227,30 +1243,31 @@ ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
   return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
 <h2>Bulletin · ${esc(t.class.name)}</h2>
 <label for="bpf">Période</label>
-<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+<select id="bpf" onchange="openBulletin('${esc(t.class.id)}',this.value,S.bl.grp)"><option value="">Toutes les périodes</option>${t.periods.map(p=>`<option ${p===t.period?'selected':''}>${esc(p)}</option>`).join('')}</select>
+${grpSel('bgf',t.grp,"blGrp",t.class.name)}
 ${S.err&&!cf?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 ${colForm}
 <p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/${tot}. Les notes des quiz du site (grises) arrivent toutes seules. Les autres cases sont à taper : elles s'enregistrent seules. Touche ＋ pour ajouter une note. Fais défiler vers la droite.</p>
 ${t.students.length?`<div class="sheetw"><table class="grid sheet"><thead>
 <tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh">${CAT_LBL[x.k]} · ${g.w[x.k]} <button type="button" class="plus" aria-label="Ajouter une note ${CAT_LBL[x.k]}" onclick="newCol('${x.k}')">＋</button></th>`).join('')}<th rowspan="2" class="tot">Total<br><small>/${tot}</small></th><th rowspan="2">Rang</th></tr>
 <tr>${G.map(x=>x.cols.map((c,i)=>`<th class="ch" title="${esc(c.title)}">${i+1}<small>/${fp(c.max)}</small>${c.auto?'':`<button type="button" class="cog" aria-label="Modifier cette colonne" onclick="editCol('${esc(c.mid)}')">⚙</button>`}</th>`).join('')+`<th class="sub">Total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
-${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.total===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
+${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}${s.grp?` <small class="muted">(${s.grp})</small>`:''}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.total===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
 </tbody></table></div>`:'<p class="muted">Aucun élève inscrit pour le moment. Ils apparaîtront ici dès qu\'ils créent leur compte.</p>'}
 <p class="hint">Exemple : un quiz noté 2/5 puis un autre 3/5 donnent 5 dans « Quiz » (sur ${g.w.quiz}), et 5 au total sur ${tot} s'il n'y a pas d'autres notes. Chaque note s'ajoute aux précédentes. Un total de catégorie ne dépasse jamais son maximum. * = correction à finir.</p>`}
+function blGrp(g){openBulletin(S.bl.class.id,S.bl.period,g)}
 function newCol(cat){const t=S.bl;t.cf={mid:'',title:'',cat,max:5,period:t.period||t.periods[0]||''};S.err='';render();window.scrollTo(0,0)}
 function editCol(mid){
   const t=S.bl,c=t.columns.find(x=>x.mid===mid);if(!c)return;
   t.cf={mid,title:c.title,cat:c.cat,max:c.max,period:c.period||''};S.err='';render();window.scrollTo(0,0);
 }
 async function saveCol(){
-  const t=S.bl,f=t.cf,notes={};
-  if(f.mid)t.students.forEach(s=>{const x=s.cells['m:'+f.mid];if(x&&x.v!==undefined)notes[s.pseudo]=x.v});
-  try{await api('/api/classes/'+t.class.id+'/manual','POST',{id:f.mid,title:f.title||CAT_LBL[f.cat],cat:f.cat,max:f.max,period:f.period,notes});S.err='';openBulletin(t.class.id,t.period)}
+  const t=S.bl,f=t.cf;
+  try{await api('/api/classes/'+t.class.id+'/manual','POST',{id:f.mid,title:f.title||CAT_LBL[f.cat],cat:f.cat,max:f.max,period:f.period});S.err='';openBulletin(t.class.id,t.period,t.grp)}
   catch(e){S.err=e.message;render()}
 }
 async function delCol(mid){
   if(!confirm('Supprimer cette colonne et toutes ses notes ?'))return;
-  try{await api('/api/classes/'+S.bl.class.id+'/manual/'+mid,'DELETE');openBulletin(S.bl.class.id,S.bl.period)}catch(e){S.err=e.message;render()}
+  try{await api('/api/classes/'+S.bl.class.id+'/manual/'+mid,'DELETE');openBulletin(S.bl.class.id,S.bl.period,S.bl.grp)}catch(e){S.err=e.message;render()}
 }
 function cellKey(e,inp){
   if(e.key!=='Enter'&&e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
@@ -1263,7 +1280,7 @@ async function saveCell(inp){
   const url='/api/classes/'+t.class.id+(col.startsWith('q:')?'/override/'+col.slice(2):'/manual/'+col.slice(2))+'/note';
   try{
     await api(url,'PUT',{pseudo:inp.dataset.s,value:inp.value});
-    const f=await api('/api/classes/'+t.class.id+'/bulletin?period='+encodeURIComponent(t.period||''));
+    const f=await api('/api/classes/'+t.class.id+'/bulletin?period='+encodeURIComponent(t.period||'')+'&grp='+(t.grp||''));
     f.students.forEach(s=>{
       const set=(k,v)=>{const td=document.querySelector('td[data-s="'+s.pseudo+'"][data-k="'+k+'"]');if(td)td.textContent=v};
       CATS.forEach(k=>set('sub:'+k,s.cats[k].pts===null?'':fp(s.cats[k].pts)));
@@ -1343,22 +1360,25 @@ async function delMsg(id){
 }
 
 /* ---------- Professeur : élèves inscrits ---------- */
-async function openStuds(id){
+async function openStuds(id,grp){
   app().innerHTML='<p class="muted">Chargement…</p>';
-  try{const r=await api('/api/classes/'+id+'/students');S.sl={cid:id,list:r.students,pw:null};S.err='';S.view='studs';render()}
+  if(grp===undefined)grp=(S.sl&&S.sl.cid===id?S.sl.grp:'')||'';
+  try{const r=await api('/api/classes/'+id+'/students?grp='+grp);S.sl={cid:id,list:r.students,pw:null,grp};S.err='';S.view='studs';render()}
   catch(e){S.err=e.message;S.view='tclass';render()}
 }
+function slGrp(g){openStuds(S.sl.cid,g)}
 function vStuds(){
   const t=S.sl;
   return `<button class="back" onclick="openClass('${esc(t.cid)}')">‹ Retour à la classe</button>
 <h2>Élèves inscrits</h2>
+${grpSel('slg',t.grp,"slGrp",(S.tc&&S.tc.class&&S.tc.class.name)||'Classe')}
 <button class="btn small" onclick="pushTest()">🔔 Envoyer une notification test à la classe</button>
 <button class="btn small" onclick="pushDiagT()">🩺 Diagnostic des notifications</button>
 ${S.sl.test?`<p class="hint" style="margin:8px 0;white-space:pre-wrap">${esc(S.sl.test)}</p>`:''}
 <p class="hint">Un élève qui a oublié son mot de passe : réinitialise-le et donne-lui le nouveau. Supprime un compte en double.</p>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 ${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t.pw.name)}</b> : <span class="code">${esc(t.pw.pw)}</span></p></div>`:''}
-${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;gap:10px;align-items:center;margin:0 0 6px">${avatarH(s,44)}<h3 style="margin:0">${esc(s.name)}</h3></div><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}${s.muted?' · <b class="bad">chat coupé</b>':''}</p>
+${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;gap:10px;align-items:center;margin:0 0 6px">${avatarH(s,44)}<h3 style="margin:0">${esc(s.name)}${s.grp?` <span class="tag">${s.grp}</span>`:' <span class="tag warn">sans groupe</span>'}</h3></div><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}${s.muted?' · <b class="bad">chat coupé</b>':''}</p>
 <button class="btn small" onclick="muteStu(${i})">${s.muted?'Rétablir son chat':'Couper son chat'}</button>
 ${s.photo||s.avatar!==null?`<button class="btn small" onclick="delPhoto(${i})">Retirer sa photo/avatar</button>`:''}
 <button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
@@ -1400,17 +1420,20 @@ async function delStu(i){
 }
 
 /* ---------- Professeur : statistiques de la classe ---------- */
-async function openStats(id){
+async function openStats(id,grp){
   app().innerHTML='<p class="muted">Chargement…</p>';
-  try{S.st=await api('/api/classes/'+id+'/stats');S.err='';S.view='stats';render()}
+  if(grp===undefined)grp=(S.st&&S.st.class.id===id?S.st.grp:'')||'';
+  try{S.st=await api('/api/classes/'+id+'/stats?grp='+grp);S.err='';S.view='stats';render()}
   catch(e){S.err=e.message;S.view='tclass';render()}
 }
+function stGrp(g){openStats(S.st.class.id,g)}
 function vStats(){
   const t=S.st;
   const bar=(v,bad)=>`<div class="bar2 ${bad?'bad':''}"><i style="width:${v||0}%"></i></div>`;
   return `<button class="back" onclick="openClass('${esc(t.class.id)}')">‹ Retour à la classe</button>
 ${mascot(t.copies?'happy':'think',t.copies?'Voici où en est ta classe.':'Pas encore de copies à analyser.',96,'small')}
 <h2>Statistiques · ${esc(t.class.name)}</h2>
+${grpSel('stg',t.grp,"stGrp",t.class.name)}
 <div class="card">
 <p style="margin:0 0 4px"><b>${t.copies}</b> copie${t.copies>1?'s':''} corrigée${t.copies>1?'s':''}</p>
 ${t.avg!==null?`<p style="margin:0">Moyenne générale : <b>${t.avg} %</b></p>${bar(t.avg,t.avg<50)}`:''}

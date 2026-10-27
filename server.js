@@ -353,7 +353,7 @@ app.get('/api/student/me', sauth, wrap(async (req, res) => {
     }
     devoirs.push(info);
   }
-  res.json({ class: { name: cls.name, level: cls.level || '' }, student: { name: req.st.name, pseudo: req.st.pseudo, avatar: profileOf(req.st.rec).avatar, photo: req.st.rec.photo || '', pv: req.st.rec.pv || 0 }, devoirs });
+  res.json({ class: { name: cls.name, level: cls.level || '' }, student: { name: req.st.name, pseudo: req.st.pseudo, avatar: profileOf(req.st.rec).avatar, photo: req.st.rec.photo || '', pv: req.st.rec.pv || 0, grp: req.st.rec.grp || '' }, devoirs });
 }));
 app.get('/api/student/history', sauth, wrap(async (req, res) => {
   const h = await studentHistory(req.st.cid, req.st.sid);
@@ -362,11 +362,14 @@ app.get('/api/student/history', sauth, wrap(async (req, res) => {
 
 /* ---------- Profil (avatar / photo) ---------- */
 const AVATARS = 12;
+const grpQ = v => { v = String(v || '').toUpperCase(); return v === 'A' || v === 'B' ? v : v === 'NONE' ? 'none' : ''; };
+const inGrp = (g, v) => !g || (g === 'none' ? !v : v === g);
 const profileOf = r => ({ name: r.name, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '', pv: r.pv || 0 });
 app.put('/api/student/profile', sauth, wrap(async (req, res) => {
   if (limited(req, 300, 'prof')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const rec = { ...req.st.rec };
   const b = req.body || {};
+  if (b.grp !== undefined) { if (b.grp !== 'A' && b.grp !== 'B') return fail(res, 400, 'Choisis A ou B.'); rec.grp = b.grp; await kv.set(stuKey(req.st.cid, req.st.pk), rec); return res.json({ profile: profileOf(rec), grp: rec.grp }); }
   if (b.clear) { delete rec.photo; delete rec.avatar; }
   else if (typeof b.photo === 'string') {
     if (!/^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.photo) || b.photo.length > 30000) return fail(res, 400, 'Photo trop lourde ou invalide.');
@@ -628,14 +631,15 @@ app.get('/api/classes', auth, wrap(async (req, res) => {
 app.get('/api/classes/:id/stats', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());
   if (!c) return fail(res, 404, 'Classe introuvable.');
-  const qs = (await classQuizzes(c.id)).filter(q => q.qs.length);
+  const qs = (await classQuizzes(c.id)).filter(q => q.qs.length), grp = grpQ(req.query.grp);
+  const gmap = {}; if (grp) (await Promise.all((await kv.list('stu:' + c.id + ':')).map(k => kv.get(k)))).filter(Boolean).forEach(r => { gmap['u_' + r.pseudo] = r.grp || ''; });
   const eff = (a, i, man) => { const m = man && man[i]; if (m === 0 || m === 1) return m; return a.ok === true ? 1 : a.ok === false ? 0 : null; };
   const mean = v => v.length ? Math.round(v.reduce((x, y) => x + y, 0) / v.length) : null;
   const per = [], students = {}, all = [];
   let flagged = 0;
   for (const q of qs) {
     const keys = await kv.list('att:' + q.id + ':');
-    const atts = (await Promise.all(keys.map(k => kv.get(k)))).filter(a => a && a.finished);
+    const atts = (await Promise.all(keys.map(k => kv.get(k)))).filter(a => a && a.finished && (!grp || inGrp(grp, gmap[a.key])));
     const hard = {}, pcts = [];
     for (const a of atts) {
       let s = 0, g = 0;
@@ -656,13 +660,14 @@ app.get('/api/classes/:id/stats', auth, wrap(async (req, res) => {
     });
   }
   const low = Object.entries(students).map(([name, v]) => ({ name, avg: mean(v), n: v.length })).filter(s => s.avg < 50).sort((a, b) => a.avg - b.avg).slice(0, 5);
-  res.json({ class: { id: c.id, name: c.name }, copies: all.length, avg: mean(all), flagged, per, low });
+  res.json({ class: { id: c.id, name: c.name }, grp, copies: all.length, avg: mean(all), flagged, per, low });
 }));
 app.get('/api/classes/:id/students', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase();
   const recs = (await Promise.all((await kv.list('stu:' + cid + ':')).map(k => kv.get(k)))).filter(Boolean);
   recs.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  res.json({ students: recs.map(r => ({ name: r.name, pseudo: r.pseudo, created: r.created, muted: !!r.muted, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '' })) });
+  const g = grpQ(req.query.grp);
+  res.json({ students: recs.filter(r => inGrp(g, r.grp)).map(r => ({ name: r.name, pseudo: r.pseudo, grp: r.grp || '', created: r.created, muted: !!r.muted, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '' })) });
 }));
 app.post('/api/classes/:id/students/:pk/reset', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
@@ -781,8 +786,8 @@ function bulRow(c, d, pseudo, period) {
   }
   return { cats, cells, pts: r2(pts), of, total: any ? r2(pts) : null };
 }
-function bulTable(c, d, period) {
-  const rows = d.studs.map(r => ({ pseudo: r.pseudo, name: r.name, ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+function bulTable(c, d, period, grp) {
+  const rows = d.studs.filter(r => inGrp(grp, r.grp)).map(r => ({ pseudo: r.pseudo, name: r.name, grp: r.grp || '', ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const ranked = rows.filter(r => r.total !== null).sort((a, b) => b.pts - a.pts);
   ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].pts === r.pts ? ranked[i - 1].rank : i + 1; });
   const v = ranked.map(r => r.pts);
@@ -791,8 +796,8 @@ function bulTable(c, d, period) {
 app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());
   if (!c) return fail(res, 404, 'Classe introuvable.');
-  const period = str(req.query.period, 40), d = await bulletinData(c), t = bulTable(c, d, period);
-  res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
+  const period = str(req.query.period, 40), grp = grpQ(req.query.grp), d = await bulletinData(c), t = bulTable(c, d, period, grp);
+  res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grp, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
     columns: [
       ...d.quizzes.filter(q => !period || q.period === period).map(q => ({ id: 'q:' + q.id, title: q.title, cat: catOf(q), max: q.max || 5, auto: true, editable: catOf(q) !== 'quiz', coef: 1, period: q.period || '', created: q.created || 0 })),
       ...d.manual.filter(e => !period || e.period === period).map(e => ({ id: 'm:' + e.id, mid: e.id, title: e.title, cat: e.cat, max: e.max, auto: false, coef: 1, period: e.period || '', created: e.created || 0 })),
@@ -803,7 +808,7 @@ app.get('/api/student/bulletin', sauth, wrap(async (req, res) => {
   if (!c) return fail(res, 404, 'Classe introuvable.');
   const d = await bulletinData(c), out = [];
   for (const p of ['', ...periodsOf(c)]) {
-    const t = bulTable(c, d, p), me = t.rows.find(r => r.pseudo === req.st.pseudo);
+    const t = bulTable(c, d, p, req.st.rec.grp || ''), me = t.rows.find(r => r.pseudo === req.st.pseudo);
     if (me && me.total !== null) out.push({ period: p, cats: me.cats, pts: me.pts, of: me.of, rank: me.rank, rankedCount: t.rankedCount });
   }
   res.json({ grading: gradingOf(c), periods: out });
@@ -826,6 +831,8 @@ app.post('/api/classes/:id/manual', auth, wrap(async (req, res) => {
   const period = periodsOf(c).includes(b.period) ? b.period : '';
   const pseudos = new Set((await kv.list('stu:' + c.id + ':')).map(k => k.slice(('stu:' + c.id + ':').length)));
   const notes = {};
+  const prev = str(b.id, 12) ? await kv.get(manKey(c.id, str(b.id, 12).replace(/[^a-z0-9]/gi, ''))) : null;
+  if (b.notes === undefined && prev) Object.assign(notes, prev.notes || {}); // modification de colonne : on garde toutes les notes, même celles des élèves non affichés
   if (b.notes && typeof b.notes === 'object') for (const [pk, v] of Object.entries(b.notes)) {
     if (!pseudos.has(pk) || v === '' || v === null || v === undefined) continue;
     const n = parseFloat(String(v).replace(',', '.'));
