@@ -472,7 +472,7 @@ function render(){
   window.scrollTo(0,0);
   if(S.view==='home')setTimeout(reveal,30);
   if(S.view==='take')tick();
-  if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(()=>{if(S.stu&&!S.stu.grp)showGrpPopup();else showPushPopup()},800)}else{closePushPopup();closeGrpPopup()}
+  if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(()=>{if(S.stu&&!S.stu.grp&&S.view==='devoirs')showGrpPopup();else showPushPopup()},800)}else{closePushPopup();closeGrpPopup()}
 }
 function setErr(m){S.err=m;S.busy=false;render()}
 
@@ -614,8 +614,7 @@ function vProfile(){
 <h2>Mon profil</h2>
 ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
 <div class="card" style="text-align:center">${avatarH(u,96)}<p style="margin:8px 0 0"><b>${esc(u.name)}</b></p></div>
-<div class="card"><h3>Ma classe</h3><p class="hint" style="margin:0 0 8px">Choisis ton groupe : ton professeur sépare les notes et les listes entre le groupe A et le groupe B.</p>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${['A','B'].map(g=>`<button type="button" class="btn ${u.grp===g?'primary':''}" aria-pressed="${u.grp===g}" onclick="setGrp('${g}')">${esc(S.cls.name)} ${g}</button>`).join('')}</div></div>
+<div class="card"><h3>Ma classe</h3>${u.grp?`<p style="margin:0;font-size:1.3rem"><b>${esc(S.cls.name)} ${u.grp}</b> <span class="tag">🔒 enregistré</span></p><p class="hint" style="margin:8px 0 0">Ton groupe est enregistré et <b>ne peut plus être changé</b>. En cas d'erreur, demande à ton professeur.</p>`:`<p class="hint" style="margin:0 0 8px">Tu n'as pas encore choisi ton groupe. Attention : le choix est <b>définitif</b>.</p><button type="button" class="btn primary" onclick="showGrpPopup()">Choisir mon groupe</button>`}</div>
 <div class="card"><h3>Choisir un avatar</h3>
 <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${AV.map((e,i)=>`<button type="button" aria-label="Avatar ${i+1}" onclick="setAvatar(${i})" style="border:2px solid ${u.avatar===i&&!u.photo?'var(--blue)':'transparent'};background:none;padding:2px;border-radius:50%;cursor:pointer">${avatarH({avatar:i},44)}</button>`).join('')}</div></div>
 <div class="card"><h3>Ou ma photo</h3>
@@ -629,14 +628,18 @@ async function saveProfile(b){
 }
 async function setGrp(g){
   try{const r=await api('/api/student/profile','PUT',{grp:g});S.stu.grp=r.grp;S.err='';closeGrpPopup();render()}
-  catch(e){S.err=e.message;render()}
+  catch(e){closeGrpPopup();S.err=e.message;render()}
 }
 function closeGrpPopup(){const e=document.getElementById('gpop');if(e)e.remove()}
+function grpAsk(g){
+  const b=document.getElementById('gpbox');if(!b)return;
+  b.innerHTML=`<div style="font-size:2.4rem" aria-hidden="true">⚠️</div><h3 style="margin:6px 0 4px">Tu confirmes ${esc(S.cls.name)} ${g} ?</h3><p style="margin:0 0 14px;color:var(--ink)"><b>Ce choix est définitif.</b> Une fois enregistré, tu ne pourras plus jamais le changer, ni toi ni personne d'autre que ton professeur. Vérifie bien avant de confirmer.</p><button type="button" class="btn primary" style="padding:16px 8px;font-size:1.05rem" onclick="setGrp('${g}');setTimeout(showPushPopup,500)">Oui, je suis dans ${esc(S.cls.name)} ${g}</button><button type="button" class="btn" style="margin-top:10px" onclick="closeGrpPopup();showGrpPopup()">‹ Non, revenir</button>`;
+}
 function showGrpPopup(){
-  if(!S.stu||S.view!=='devoirs'||S.stu.grp||document.getElementById('gpop'))return;
+  if(!S.stu||S.stu.grp||document.getElementById('gpop'))return;
   const d=document.createElement('div');d.id='gpop';d.setAttribute('role','dialog');d.setAttribute('aria-modal','true');d.setAttribute('aria-label','Choisis ton groupe');
   d.style.cssText='position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(10,20,60,.72)';
-  d.innerHTML=`<div style="max-width:420px;width:100%;background:var(--card);color:var(--ink);border-radius:20px;padding:22px;box-shadow:0 14px 40px rgba(0,0,0,.4);text-align:center"><div style="font-size:2.4rem" aria-hidden="true">🎓</div><h3 style="margin:6px 0 4px">Dans quel groupe es-tu ?</h3><p class="hint" style="margin:0 0 14px">Ton professeur sépare les notes de la classe en deux groupes. Choisis le tien (tu pourras le changer dans ton profil).</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${['A','B'].map(g=>`<button type="button" class="btn primary" style="font-size:1.1rem;padding:16px 8px" onclick="setGrp('${g}');setTimeout(showPushPopup,500)">${esc(S.cls.name)} ${g}</button>`).join('')}</div></div>`;
+  d.innerHTML=`<div id="gpbox" style="max-width:420px;width:100%;background:var(--card);color:var(--ink);border-radius:20px;padding:22px;box-shadow:0 14px 40px rgba(0,0,0,.4);text-align:center"><div style="font-size:2.4rem" aria-hidden="true">🎓</div><h3 style="margin:6px 0 4px">Dans quel groupe es-tu ?</h3><p style="margin:0 0 6px;color:var(--ink)">Ton professeur sépare les notes de la classe en deux groupes.</p><p style="margin:0 0 14px;color:var(--red);font-weight:700">Attention : ton choix sera définitif. Tu ne pourras plus le changer ensuite.</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${['A','B'].map(g=>`<button type="button" class="btn primary" style="font-size:1.1rem;padding:16px 8px" onclick="grpAsk('${g}')">${esc(S.cls.name)} ${g}</button>`).join('')}</div></div>`;
   document.body.appendChild(d);
 }
 function setAvatar(i){saveProfile({avatar:i})}
@@ -1381,6 +1384,7 @@ ${t.pw?`<div class="card"><p style="margin:0">Nouveau mot de passe de <b>${esc(t
 ${t.list.length?t.list.map((s,i)=>`<div class="card"><div style="display:flex;gap:10px;align-items:center;margin:0 0 6px">${avatarH(s,44)}<h3 style="margin:0">${esc(s.name)}${s.grp?` <span class="tag">${s.grp}</span>`:' <span class="tag warn">sans groupe</span>'}</h3></div><p class="muted" style="margin:0 0 10px">Pseudo : ${esc(s.pseudo)}${s.muted?' · <b class="bad">chat coupé</b>':''}</p>
 <button class="btn small" onclick="muteStu(${i})">${s.muted?'Rétablir son chat':'Couper son chat'}</button>
 ${s.photo||s.avatar!==null?`<button class="btn small" onclick="delPhoto(${i})">Retirer sa photo/avatar</button>`:''}
+<button class="btn small" onclick="changeGrp(${i})">Changer son groupe</button>
 <button class="btn small" onclick="resetStu(${i})">Réinitialiser le mot de passe</button>
 <button class="btn small danger" onclick="delStu(${i})">Supprimer</button></div>`).join(''):'<p class="muted">Aucun élève inscrit pour le moment.</p>'}`}
 async function pushDiagT(){
@@ -1399,6 +1403,12 @@ async function pushTest(){
     S.sl.test=r.sent?('Envoyée à '+r.recipients+' élève(s). '+(r.info||'')+' Si rien n\'arrive : l\'élève doit avoir touché « Activer les notifications » sur son téléphone.'):('Échec : '+(r.info||r.detail||'raison inconnue'));
   }catch(e){S.sl.test=e.message}
   render();
+}
+async function changeGrp(i){
+  const s=S.sl.list[i],g=(prompt('Nouveau groupe pour '+s.name+' (écris A ou B) ?\nLes élèves ne peuvent pas le changer eux-mêmes.',s.grp||'')||'').trim().toUpperCase();
+  if(!g)return;
+  if(g!=='A'&&g!=='B'){alert('Écris seulement A ou B.');return}
+  try{await api('/api/classes/'+S.sl.cid+'/students/'+encodeURIComponent(s.pseudo)+'/grp','POST',{grp:g});openStuds(S.sl.cid)}catch(e){S.err=e.message;render()}
 }
 async function muteStu(i){
   const s=S.sl.list[i];

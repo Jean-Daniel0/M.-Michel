@@ -369,7 +369,7 @@ app.put('/api/student/profile', sauth, wrap(async (req, res) => {
   if (limited(req, 300, 'prof')) return fail(res, 429, 'Trop d\'essais. Attends une minute.');
   const rec = { ...req.st.rec };
   const b = req.body || {};
-  if (b.grp !== undefined) { if (b.grp !== 'A' && b.grp !== 'B') return fail(res, 400, 'Choisis A ou B.'); rec.grp = b.grp; await kv.set(stuKey(req.st.cid, req.st.pk), rec); return res.json({ profile: profileOf(rec), grp: rec.grp }); }
+  if (b.grp !== undefined) { if (b.grp !== 'A' && b.grp !== 'B') return fail(res, 400, 'Choisis A ou B.'); if (rec.grp) return fail(res, 409, 'Ton groupe (' + rec.grp + ') est déjà enregistré et ne peut plus être changé. En cas d\'erreur, demande à ton professeur.'); rec.grp = b.grp; await kv.set(stuKey(req.st.cid, req.st.pk), rec); return res.json({ profile: profileOf(rec), grp: rec.grp }); }
   if (b.clear) { delete rec.photo; delete rec.avatar; }
   else if (typeof b.photo === 'string') {
     if (!/^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.photo) || b.photo.length > 30000) return fail(res, 400, 'Photo trop lourde ou invalide.');
@@ -668,6 +668,14 @@ app.get('/api/classes/:id/students', auth, wrap(async (req, res) => {
   recs.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const g = grpQ(req.query.grp);
   res.json({ students: recs.filter(r => inGrp(g, r.grp)).map(r => ({ name: r.name, pseudo: r.pseudo, grp: r.grp || '', created: r.created, muted: !!r.muted, avatar: Number.isInteger(r.avatar) ? r.avatar : null, photo: r.photo || '' })) });
+}));
+app.post('/api/classes/:id/students/:pk/grp', auth, wrap(async (req, res) => {
+  const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
+  if (!rec) return fail(res, 404, 'Élève introuvable.');
+  const g = String(req.body.grp || '').toUpperCase();
+  if (g !== 'A' && g !== 'B') return fail(res, 400, 'Choisis A ou B.');
+  rec.grp = g; await kv.set(stuKey(cid, pk), rec);
+  res.json({ ok: true, grp: g });
 }));
 app.post('/api/classes/:id/students/:pk/reset', auth, wrap(async (req, res) => {
   const cid = req.params.id.toUpperCase(), pk = pseudoKey(req.params.pk), rec = await kv.get(stuKey(cid, pk));
