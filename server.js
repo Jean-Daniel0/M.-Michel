@@ -796,16 +796,23 @@ function bulRow(c, d, pseudo, period) {
 }
 function bulTable(c, d, period, grp) {
   const rows = d.studs.filter(r => inGrp(grp, r.grp)).map(r => ({ pseudo: r.pseudo, name: r.name, grp: r.grp || '', ...bulRow(c, d, r.pseudo, period) })).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const ranked = rows.filter(r => r.total !== null).sort((a, b) => b.pts - a.pts);
-  ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].pts === r.pts ? ranked[i - 1].rank : i + 1; });
-  const v = ranked.map(r => r.pts);
-  return { rows, rankedCount: ranked.length, classAvg: v.length ? r1(v.reduce((t, x) => t + x, 0) / v.length) : null };
+  // le rang et la moyenne se calculent dans chaque groupe (A, B, sans groupe), jamais A contre B
+  const avgs = {}; let rankedCount = 0;
+  for (const g of ['A', 'B', '']) {
+    const ranked = rows.filter(r => r.grp === g && r.total !== null).sort((a, b) => b.pts - a.pts);
+    ranked.forEach((r, i) => { r.rank = i > 0 && ranked[i - 1].pts === r.pts ? ranked[i - 1].rank : i + 1; });
+    avgs[g || 'none'] = ranked.length ? r1(ranked.reduce((t, x) => t + x.pts, 0) / ranked.length) : null;
+    if (grp && inGrp(grp, g)) rankedCount = ranked.length;
+  }
+  const v = rows.filter(r => r.total !== null).map(r => r.pts);
+  const own = rows.filter(r => r.total !== null && r.grp === (grp === 'none' ? '' : grp)).length;
+  return { rows, rankedCount: grp ? own : v.length, classAvg: v.length ? r1(v.reduce((t, x) => t + x, 0) / v.length) : null, avgs };
 }
 app.get('/api/classes/:id/bulletin', auth, wrap(async (req, res) => {
   const c = await kv.get('class:' + req.params.id.toUpperCase());
   if (!c) return fail(res, 404, 'Classe introuvable.');
   const period = str(req.query.period, 40), grp = grpQ(req.query.grp), d = await bulletinData(c), t = bulTable(c, d, period, grp);
-  res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grp, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, rankedCount: t.rankedCount,
+  res.json({ class: { id: c.id, name: c.name }, periods: periodsOf(c), period, grp, grading: gradingOf(c), students: t.rows, classAvg: t.classAvg, avgs: t.avgs, rankedCount: t.rankedCount,
     columns: [
       ...d.quizzes.filter(q => !period || q.period === period).map(q => ({ id: 'q:' + q.id, title: q.title, cat: catOf(q), max: q.max || 5, auto: true, editable: catOf(q) !== 'quiz', coef: 1, period: q.period || '', created: q.created || 0 })),
       ...d.manual.filter(e => !period || e.period === period).map(e => ({ id: 'm:' + e.id, mid: e.id, title: e.title, cat: e.cat, max: e.max, auto: false, coef: 1, period: e.period || '', created: e.created || 0 })),
@@ -1278,5 +1285,23 @@ app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: fa
 app.get('/', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use((req, res) => res.status(404).send('Page introuvable'));
 
+/* Rappel continu : tant qu'un élève n'a pas choisi son groupe A ou B, on le notifie toutes les 3 h (7 h – 20 h, heure d'Haïti). */
+const GRP_EVERY = 3 * 3600 * 1000;
+async function grpReminders() {
+  try {
+    if (!pushOn()) return;
+    const h = parseInt(hmNow().slice(0, 2), 10);
+    if (!process.env.GRP_FORCE && !(h >= 7 && h < 20)) return;
+    for (const ck of await kv.list('class:')) {
+      const cid = ck.slice(6), last = await kv.get('rem:' + cid);
+      if (last && Date.now() - last.t < GRP_EVERY) continue;
+      const recs = (await Promise.all((await kv.list('stu:' + cid + ':')).map(k => kv.get(k)))).filter(r => r && !r.grp);
+      if (!recs.length) continue;
+      await kv.set('rem:' + cid, { t: Date.now() });
+      await pushToClass(cid, { title: '⚠️ Choisis ton groupe A ou B', body: 'Ouvre M.Michel et choisis ton groupe. C\'est obligatoire et définitif.', only: recs.map(r => r.pseudo), excludeSet: await activeQuizTakers(cid), url: '/', topic: 'grp-' + cid });
+    }
+  } catch (e) { console.error('grpReminders', e.message); }
+}
+kv.init().then(() => { setTimeout(grpReminders, 60000); setInterval(grpReminders, 15 * 60000); }).catch(() => {});
 kv.init().then(() => app.listen(PORT, () => console.log('M.Michel en ligne sur le port ' + PORT)))
   .catch(e => { console.error('Erreur de démarrage', e); process.exit(1); });

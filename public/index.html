@@ -1235,6 +1235,23 @@ function blCell(t,s,c){
   }
   return `<td class="in"><input type="number" inputmode="decimal" min="0" max="${c.max}" step="0.25" data-c="${esc(c.id)}" data-s="${esc(s.pseudo)}" value="${x&&x.v!==undefined?x.v:''}" onchange="saveCell(this)" onkeydown="cellKey(event,this)" aria-label="${esc(c.title)} : ${esc(s.name)}"></td>`;
 }
+function blTable(t,G,rows,tot){
+  const g=t.grading;
+  return `<div class="sheetw"><table class="grid sheet"><thead>
+<tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh">${CAT_LBL[x.k]} · ${g.w[x.k]} <button type="button" class="plus" aria-label="Ajouter une note ${CAT_LBL[x.k]}" onclick="newCol('${x.k}')">＋</button></th>`).join('')}<th rowspan="2" class="tot">Total<br><small>/${tot}</small></th><th rowspan="2">Rang</th></tr>
+<tr>${G.map(x=>x.cols.map((c,i)=>`<th class="ch" title="${esc(c.title)}">${i+1}<small>/${fp(c.max)}</small>${c.auto?'':`<button type="button" class="cog" aria-label="Modifier cette colonne" onclick="editCol('${esc(c.mid)}')">⚙</button>`}</th>`).join('')+`<th class="sub">Total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
+${rows.map(s=>`<tr><td class="nm">${esc(s.name)}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.total===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
+</tbody></table></div>`;
+}
+function blSections(t,G,tot){
+  const parts=t.grp===''?[['A',t.class.name+' A'],['B',t.class.name+' B'],['','Sans groupe']]:[[t.grp==='none'?'':t.grp,t.grp==='none'?'Sans groupe':t.class.name+' '+t.grp]];
+  return parts.map(([g,lbl])=>{
+    const rows=t.students.filter(s=>(s.grp||'')===g);
+    if(!rows.length&&(g===''||t.grp===''&&false))return '';
+    const av=t.avgs&&t.avgs[g||'none'];
+    return `<h3 style="margin:18px 0 6px">${esc(lbl)} <span class="muted" style="font-weight:400;font-size:.9rem">· ${rows.length} élève${rows.length>1?'s':''}<span data-avg="${g||'none'}">${av!==null&&av!==undefined?' · moyenne '+fp(av)+'/'+tot:''}</span></span></h3>${rows.length?blTable(t,G,rows,tot):'<p class="muted">Aucun élève dans ce groupe pour le moment.</p>'}`;
+  }).join('');
+}
 function vBulletin(){
   const t=S.bl,g=t.grading,G=blGroups(t),cf=t.cf,tot=CATS.reduce((a,k)=>a+g.w[k],0);
   const colForm=cf?`<div class="card"><h3>${cf.mid?'Modifier la colonne':'Nouvelle colonne'} · ${CAT_LBL[cf.cat]}</h3>
@@ -1250,12 +1267,8 @@ ${S.err?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 ${grpSel('bgf',t.grp,"blGrp",t.class.name)}
 ${S.err&&!cf?`<p class="err" role="alert">${esc(S.err)}</p>`:''}
 ${colForm}
-<p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/${tot}. Les notes des quiz du site (grises) arrivent toutes seules. Les autres cases sont à taper : elles s'enregistrent seules. Touche ＋ pour ajouter une note. Fais défiler vers la droite.</p>
-${t.students.length?`<div class="sheetw"><table class="grid sheet"><thead>
-<tr><th rowspan="2" class="nm">Élève</th>${G.map(x=>`<th colspan="${x.cols.length+1}" class="gh">${CAT_LBL[x.k]} · ${g.w[x.k]} <button type="button" class="plus" aria-label="Ajouter une note ${CAT_LBL[x.k]}" onclick="newCol('${x.k}')">＋</button></th>`).join('')}<th rowspan="2" class="tot">Total<br><small>/${tot}</small></th><th rowspan="2">Rang</th></tr>
-<tr>${G.map(x=>x.cols.map((c,i)=>`<th class="ch" title="${esc(c.title)}">${i+1}<small>/${fp(c.max)}</small>${c.auto?'':`<button type="button" class="cog" aria-label="Modifier cette colonne" onclick="editCol('${esc(c.mid)}')">⚙</button>`}</th>`).join('')+`<th class="sub">Total<br><small>/${g.w[x.k]}</small></th>`).join('')}</tr></thead><tbody>
-${t.students.map(s=>`<tr><td class="nm">${esc(s.name)}${s.grp?` <small class="muted">(${s.grp})</small>`:''}</td>${G.map(x=>x.cols.map(c=>blCell(t,s,c)).join('')+`<td class="sub" data-s="${esc(s.pseudo)}" data-k="sub:${x.k}">${s.cats[x.k].pts===null?'':fp(s.cats[x.k].pts)}</td>`).join('')}<td class="tot" data-s="${esc(s.pseudo)}" data-k="tot">${s.total===null?'':fp(s.pts)}</td><td data-s="${esc(s.pseudo)}" data-k="rank">${s.rank||''}</td></tr>`).join('')}
-</tbody></table></div>`:'<p class="muted">Aucun élève inscrit pour le moment. Ils apparaîtront ici dès qu\'ils créent leur compte.</p>'}
+<p class="hint" id="blinfo">${t.students.length} élève${t.students.length>1?'s':''} · moyenne de la classe : <b>${fp(t.classAvg)||'—'}</b>/${tot}. Une liste par groupe (A, B). Les notes des quiz du site (grises) arrivent toutes seules. Les autres cases sont à taper : elles s'enregistrent seules. Touche ＋ pour ajouter une note. Fais défiler vers la droite.</p>
+${t.students.length?blSections(t,G,tot):'<p class="muted">Aucun élève inscrit pour le moment. Ils apparaîtront ici dès qu\'ils créent leur compte.</p>'}
 <p class="hint">Exemple : un quiz noté 2/5 puis un autre 3/5 donnent 5 dans « Quiz » (sur ${g.w.quiz}), et 5 au total sur ${tot} s'il n'y a pas d'autres notes. Chaque note s'ajoute aux précédentes. Un total de catégorie ne dépasse jamais son maximum. * = correction à finir.</p>`}
 function blGrp(g){openBulletin(S.bl.class.id,S.bl.period,g)}
 function newCol(cat){const t=S.bl;t.cf={mid:'',title:'',cat,max:5,period:t.period||t.periods[0]||''};S.err='';render();window.scrollTo(0,0)}
@@ -1289,7 +1302,8 @@ async function saveCell(inp){
       CATS.forEach(k=>set('sub:'+k,s.cats[k].pts===null?'':fp(s.cats[k].pts)));
       set('tot',s.total===null?'':fp(s.pts));set('rank',s.rank||'');
     });
-    t.students=f.students;t.classAvg=f.classAvg;
+    t.students=f.students;t.classAvg=f.classAvg;t.avgs=f.avgs;
+    const tt=CATS.reduce((a,k)=>a+t.grading.w[k],0);document.querySelectorAll('[data-avg]').forEach(e=>{const v=f.avgs&&f.avgs[e.dataset.avg];e.textContent=v!==null&&v!==undefined?' · moyenne '+fp(v)+'/'+tt:''});
     const i=document.getElementById('blinfo');if(i)i.querySelector('b').textContent=fp(f.classAvg)||'—';
   }catch(e){inp.style.outline='2px solid #d4122f';alert(e.message)}
 }
