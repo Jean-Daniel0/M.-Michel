@@ -961,6 +961,7 @@ async function pushToClass(cid, { title, body, exclude, excludeSet, only, url, t
   const out = { sent: false, recipients: 0, status: 0, detail: '' };
   if (!pushOn()) { out.detail = 'Clé OneSignal absente dans Render (ONESIGNAL_REST_API_KEY).'; return out; }
   try {
+    try { const ev = MMEv.current(await themeMode()); if (ev && title) title += ' ' + ev.emoji; } catch (e) {}
     const keys = await kv.list('stu:' + cid + ':');
     const pks = keys.map(k => k.slice(('stu:' + cid + ':').length)).filter(pk => pk !== exclude && !(excludeSet && excludeSet.has(pk)) && (!only || only.includes(pk)));
     out.recipients = pks.length;
@@ -1279,6 +1280,14 @@ app.post('/api/generate', auth, wrap(async (req, res) => {
   res.json({ qs, asked: count });
 }));
 app.get('/api/me', auth, (req, res) => res.json({ ok: true }));
+const MMEv = require('./public/events.js');
+const themeMode = async () => { const c = await kv.get('cfg:theme'); return (c && c.mode) || 'auto'; };
+app.get('/api/theme', wrap(async (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ mode: await themeMode() }); }));
+app.put('/api/theme', auth, wrap(async (req, res) => {
+  const m = String((req.body || {}).mode || 'auto');
+  if (m !== 'auto' && m !== 'off' && !MMEv.find(m)) return res.status(400).json({ error: 'Choix invalide.' });
+  await kv.set('cfg:theme', { mode: m }); res.json({ mode: m });
+}));
 app.get('/healthz', (req, res) => res.send('ok'));
 
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: false, setHeaders: (res, p) => { if (p.endsWith('.html') || p.endsWith('.js')) res.set('Cache-Control', 'no-cache'); } }));

@@ -28,7 +28,7 @@ h1{font-size:2.4rem}
 h2{font-size:1.45rem}
 h3{font-size:1.1rem}
 .lead{color:var(--mute);margin:0 0 1.4em;max-width:36ch}
-.banner{position:relative;border-radius:20px;overflow:hidden;margin:6px 0 24px;min-height:440px;color:#fff;background:#16358c;isolation:isolate;border-bottom:5px solid #c4122f}
+.banner{position:relative;border-radius:20px;overflow:hidden;margin:6px 0 24px;min-height:440px;color:#fff;background:var(--ev1,#16358c);isolation:isolate;border-bottom:5px solid #c4122f}
 .banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 6%;z-index:-2}
 .banner::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(10,20,60,0) 0%,rgba(10,20,60,0) 34%,rgba(10,20,60,.8) 60%,rgba(10,20,60,.95) 100%)}
 .banner .over{padding:250px 20px 22px}
@@ -45,7 +45,7 @@ h3{font-size:1.1rem}
 .chatmode{overflow:hidden}
 .chatmode #app{max-width:none;padding:0;margin:0}
 #chpage{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:#111;height:100vh;height:100dvh}
-.chtop{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 4px;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.3);padding-top:max(6px,env(safe-area-inset-top))}
+.chtop{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px 6px 4px;background:var(--ev1,#16358c);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.3);padding-top:max(6px,env(safe-area-inset-top))}
 .chtop .chback{background:none;border:0;color:#fff;font:400 2.2rem/1 system-ui,sans-serif;width:44px;height:44px;padding:0 0 4px;cursor:pointer;border-radius:50%}
 .chtop img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff}
 .chtop .chcls{font-weight:700;font-size:1.05rem;padding-left:10px;margin-left:2px;border-left:2px solid rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -75,7 +75,7 @@ h3{font-size:1.1rem}
 #chform input{flex:1;min-width:0;border-radius:24px;border:0;background:#202124;color:#fff;padding:12px 16px;font-size:1.05rem}
 #chform input:focus-visible{outline:2px solid #5b8def;outline-offset:0}
 #chform .btn{border-radius:50%;width:48px!important;height:48px;padding:0;font-size:1.3rem;background:#fff;color:#16358c;border:0}
-.sh{position:relative;border-radius:20px;padding:18px 16px 16px;margin:0 0 18px;color:#fff;background:linear-gradient(135deg,#16358c 0%,#2a52c9 60%,#b80f2b 140%);box-shadow:0 10px 26px rgba(22,53,140,.35);overflow:hidden}
+.sh{position:relative;border-radius:20px;padding:18px 16px 16px;margin:0 0 18px;color:#fff;background:linear-gradient(135deg,var(--ev1,#16358c) 0%,var(--ev2,#2a52c9) 60%,var(--ev3,#b80f2b) 140%);box-shadow:0 10px 26px rgba(22,53,140,.35);overflow:hidden}
 .sh:after{content:"";position:absolute;right:-40px;top:-40px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12)}
 .sh-top{display:flex;align-items:center;gap:14px;position:relative;z-index:1}
 .sh-top .av{flex:none;border:0;background:none;padding:0;cursor:pointer;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.85)}
@@ -134,7 +134,7 @@ h3{font-size:1.1rem}
 .tw .acts .btn{padding:12px 14px;border-radius:12px;font-weight:700}
 .empty{text-align:center;padding:34px 16px;border:2px dashed var(--line);border-radius:18px;color:var(--mute)}
 .empty b{display:block;font-size:2rem;margin-bottom:6px}
-.titlebar{position:sticky;top:0;z-index:20;background:#16358c;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.titlebar{position:sticky;top:0;z-index:20;background:var(--ev1,#16358c);color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.25)}
 .titlebar div{max-width:640px;margin:0 auto;padding:9px 16px;display:flex;align-items:center;gap:10px}
 .titlebar img{width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid #fff;flex:none}
 .titlebar b{font:700 1.2rem Georgia,"Times New Roman",serif;letter-spacing:.01em}
@@ -248,10 +248,10 @@ ul.rules li{margin:.4em 0}
 .codein{width:100%;box-sizing:border-box;text-align:center;font:700 1.5rem system-ui,sans-serif;letter-spacing:.18em;padding:14px;border-radius:16px;border:2px solid var(--line);background:var(--bg);color:var(--ink)}
 .codein::placeholder{letter-spacing:.3em;color:var(--mute);opacity:.6}
 .codein:focus{border-color:var(--blue);outline:0;box-shadow:0 0 0 4px rgba(42,82,201,.18)}
-.codecard .go{margin-top:12px;padding:15px;font-size:1.08rem;border-radius:16px;background:linear-gradient(135deg,#16358c,#2a52c9);box-shadow:0 8px 20px rgba(22,53,140,.35)}
+.codecard .go{margin-top:12px;padding:15px;font-size:1.08rem;border-radius:16px;background:linear-gradient(135deg,var(--ev1,#16358c),var(--ev2,#2a52c9));box-shadow:0 8px 20px rgba(22,53,140,.35)}
 .codecard .go span{display:inline-block;transition:transform .2s}
 .codecard .go:active span{transform:translateX(5px)}
-.word{position:relative;margin:30px 0;padding:26px 22px 20px;border-radius:22px;background:linear-gradient(135deg,#16358c,#2a52c9);color:#fff;box-shadow:0 12px 28px rgba(22,53,140,.3);overflow:hidden}
+.word{position:relative;margin:30px 0;padding:26px 22px 20px;border-radius:22px;background:linear-gradient(135deg,var(--ev1,#16358c),var(--ev2,#2a52c9));color:#fff;box-shadow:0 12px 28px rgba(22,53,140,.3);overflow:hidden}
 .word .qm{position:absolute;right:14px;top:-18px;font:700 8rem/1 Georgia,serif;color:rgba(255,255,255,.14)}
 .word p{position:relative;margin:0 0 .8em;font-size:1rem}
 .word b{font-family:Georgia,serif;color:#ffd9df}
@@ -274,14 +274,25 @@ ul.rules li{margin:.4em 0}
 .rv{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
 .rv.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){.banner img,.codecard .mascot svg{animation:none}.rv{opacity:1;transform:none;transition:none}}
+#evr{display:none;text-align:center;font-weight:800;font-size:.95rem;color:#fff;padding:8px 12px;margin:0 -16px;background:linear-gradient(90deg,var(--ev1),var(--ev2),var(--ev1));background-size:200% 100%;animation:evsh 6s linear infinite;letter-spacing:.2px}
+body.ev #evr{display:block}body.ev.chatmode #evr,body.ev.white #evr,body.ev.taking #evr{display:none}
+#evp{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:30;display:none}
+body.ev #evp{display:block}body.taking #evp,body.white #evp{display:none}
+#evp i{position:absolute;top:-10%;font-style:normal;opacity:.85;animation:evfall linear infinite;will-change:transform}
+body.chatmode #evp i{opacity:.4}
+.evchip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:rgba(255,255,255,.2);font-weight:700}
+@keyframes evfall{0%{transform:translate3d(0,-10vh,0) rotate(0)}100%{transform:translate3d(var(--dx,20px),115vh,0) rotate(360deg)}}
+@keyframes evsh{to{background-position:200% 0}}
+@media (prefers-reduced-motion:reduce){#evp i,#evr{animation:none}}
 </style>
 </head>
 <body>
 <div class="bar"></div>
 <div id="tb" class="titlebar" style="display:none"><div><img src="/avatar.webp" width="36" height="36" alt=""><b>M.Michel</b><span>Devoirs · Quiz · Consignes</span></div></div>
 <header id="hd"><button onclick="goHome()" aria-label="Accueil M.Michel"><img src="/avatar.webp" width="40" height="40" alt=""><span>M.Michel</span></button></header>
-<main id="app"></main>
+<div id="evr"></div><main id="app"></main><div id="evp" aria-hidden="true"></div>
 <script src="/avatar.js"></script>
+<script src="/events.js"></script>
 <script>
 /* ---------- PWA : installation ---------- */
 /* Un seul worker : /OneSignalSDKWorker.js (notifications + cache). OneSignal l'enregistre lui-même ; si le module de
@@ -425,7 +436,7 @@ function vPush(){
 window.addEventListener('load',()=>setTimeout(initPush,500));
 /* ---------- Réseau ---------- */
 const store={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
-const AUTH=['/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
+const AUTH=['/api/theme','/api/quizzes','/api/results','/api/classes','/api/me','/api/generate'];
 const SAUTH=['/api/student/me','/api/student/profile','/api/chat','/api/student/history','/api/student/bulletin','/api/brief','/api/start','/api/answer','/api/finish','/api/flags'];
 async function api(path,method,body,keepalive){
   const h={'Content-Type':'application/json'};
@@ -460,6 +471,24 @@ const SAY=['Lis bien la question. Prends ton temps.','Continue, tu avances bien.
 
 function go(v){S.view=v;S.err='';render()}
 function goHome(){if(S.view==='take')return;go('home')}
+/* ---------- Décors de fête ---------- */
+let EVMODE=store.get('mm_theme')||'auto',EVCUR='';
+function applyTheme(){
+  const b=document.body,e=window.MMEvents?MMEvents.current(EVMODE):null,st=document.documentElement.style;
+  b.classList.toggle('taking',S.view==='take');
+  if(!e){b.classList.remove('ev');['--ev1','--ev2','--ev3'].forEach(k=>st.removeProperty(k));EVCUR='';document.getElementById('evp').innerHTML='';return}
+  b.classList.add('ev');st.setProperty('--ev1',e.c1);st.setProperty('--ev2',e.c2);st.setProperty('--ev3',e.c2);
+  const r=document.getElementById('evr');r.textContent=e.emoji+' '+e.greet+' '+e.emoji;
+  if(EVCUR!==e.id){EVCUR=e.id;const p=document.getElementById('evp');let h='';
+    for(let i=0;i<12;i++){h+=`<i style="left:${Math.round(Math.random()*95)}%;font-size:${16+Math.round(Math.random()*14)}px;animation-duration:${9+Math.random()*9}s;animation-delay:-${Math.random()*14}s;--dx:${Math.round(Math.random()*80-40)}px">${e.parts[i%e.parts.length]}</i>`}
+    p.innerHTML=h}
+}
+function evChip(){const e=window.MMEvents?MMEvents.current(EVMODE):null;return e?`<span class="evchip">${e.emoji} ${esc(e.name)}</span>`:''}
+async function loadTheme(){try{const r=await fetch('/api/theme',{cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.mode&&d.mode!==EVMODE){EVMODE=d.mode;store.set('mm_theme',d.mode)}applyTheme()}catch(e){}}
+async function setTheme(m){try{const r=await api('/api/theme','PUT',{mode:m});EVMODE=r.mode;store.set('mm_theme',r.mode);S.err=''}catch(e){S.err=e.message||'Erreur';}render()}
+function vThemeCard(){return `<div class="card"><h3>🎉 Décors de fête</h3>
+<p class="hint" style="margin:0 0 10px">Automatique : le site se décore tout seul selon la date (Halloween, Noël, Pâques…). Tu peux aussi forcer une fête ou tout désactiver.</p>
+<select onchange="setTheme(this.value)" aria-label="Décors de fête"><option value="auto"${EVMODE==='auto'?' selected':''}>Automatique (selon la date)</option><option value="off"${EVMODE==='off'?' selected':''}>Aucun décor</option>${MMEvents.EVENTS.map(e=>`<option value="${e.id}"${EVMODE===e.id?' selected':''}>${e.emoji} ${esc(e.name)}</option>`).join('')}</select></div>`}
 function render(){
   const v={bulletin:vBulletin,manual:vManual,profile:vProfile,chat:vChat,tchat:vTChat,studs:vStuds,slogin:vSLogin,mynotes:vMyNotes,carnet:vCarnet,sprog:vSProg,studs:vStuds,stats:vStats,home:vHome,devoirs:vDevoirs,brief:vBrief,intro:vIntro,take:vTake,done:vDone,thome:vTHome,cedit:vCEdit,tclass:vTClass,editor:vEditor,results:vResults,detail:vDetail}[S.view];
   if(S.view!=='chat')stopChat();
@@ -470,6 +499,7 @@ function render(){
   document.body.classList.toggle('white',S.view==='brief');
   if(S.view==='editor'){const b=document.getElementById('brief');if(b)b.innerHTML=S.d.brief||''}
   window.scrollTo(0,0);
+  applyTheme();
   if(S.view==='home')setTimeout(reveal,30);
   if(S.view==='take')tick();
   if(S.view==='devoirs'){setTimeout(checkUnread,50);setTimeout(()=>{if(S.stu&&!S.stu.grp&&S.view==='devoirs')showGrpPopup();else showPushPopup()},800)}else{closePushPopup();closeGrpPopup()}
@@ -508,7 +538,7 @@ function vHome(){return `
 <p class="eyebrow">M.Michel · Professeur</p>
 <h1>Jean-Daniel MICHEL</h1>
 <p>Bienvenue sur la plateforme de Jean-Daniel MICHEL, professeur d'informatique, d'éducation à la citoyenneté et d'éducation esthétique et artistique.</p>
-<div class="hchips"><span>💻 Informatique</span><span>⚖️ Citoyenneté</span><span>🎨 Art</span></div>
+<div class="hchips">${evChip()}<span>💻 Informatique</span><span>⚖️ Citoyenneté</span><span>🎨 Art</span></div>
 </div>
 </section>
 <section class="codecard rv" aria-label="Entrer le code de ma classe">
@@ -1111,7 +1141,7 @@ ${c.level?`<p class="muted" style="margin:0 0 8px">${esc(c.level)}</p>`:''}
 <button class="btn small" onclick="editClass('${esc(c.id)}')">Renommer</button>
 <button class="btn small danger" onclick="delClass('${esc(c.id)}')">Supprimer</button>
 </div>`).join('')}
-<p></p>
+${vThemeCard()}<p></p>
 <button class="btn" onclick="S.name='';S.view='home';render()">Voir la page des élèves</button>
 <button class="btn" onclick="logout()">Me déconnecter de cet appareil</button>`}
 function logout(){store.del('mm_token');S.token=false;go('home')}
@@ -1637,6 +1667,7 @@ async function allowRetry(){
 }
 
 /* ---------- Démarrage : si cet appareil est reconnu, on ouvre l'espace professeur ---------- */
+loadTheme();setInterval(loadTheme,600000);
 (async function boot(){
   if(store.get('mm_token')){
     try{await api('/api/me');S.token=true;return enterTeacher()}catch(e){if(e.status===401)S.token=false}
