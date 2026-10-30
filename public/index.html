@@ -293,6 +293,7 @@ body.chatmode #evp i{opacity:.4}
 <div id="evr"></div><main id="app"></main><div id="evp" aria-hidden="true"></div>
 <script src="/avatar.js"></script>
 <script src="/events.js"></script>
+<script src="/decor.js"></script>
 <script>
 /* ---------- PWA : installation ---------- */
 /* Un seul worker : /OneSignalSDKWorker.js (notifications + cache). OneSignal l'enregistre lui-même ; si le module de
@@ -479,9 +480,7 @@ function applyTheme(){
   if(!e){b.classList.remove('ev');['--ev1','--ev2','--ev3'].forEach(k=>st.removeProperty(k));EVCUR='';document.getElementById('evp').innerHTML='';return}
   b.classList.add('ev');st.setProperty('--ev1',e.c1);st.setProperty('--ev2',e.c2);st.setProperty('--ev3',e.c2);
   const r=document.getElementById('evr');r.textContent=e.emoji+' '+e.greet+' '+e.emoji;
-  if(EVCUR!==e.id){EVCUR=e.id;const p=document.getElementById('evp');let h='';
-    for(let i=0;i<12;i++){h+=`<i style="left:${Math.round(Math.random()*95)}%;font-size:${16+Math.round(Math.random()*14)}px;animation-duration:${9+Math.random()*9}s;animation-delay:-${Math.random()*14}s;--dx:${Math.round(Math.random()*80-40)}px">${e.parts[i%e.parts.length]}</i>`}
-    p.innerHTML=h}
+  if(EVCUR!==e.id){EVCUR=e.id;document.getElementById('evp').innerHTML=window.MMDecor?MMDecor.scene(e.id):''}
 }
 function evChip(){const e=window.MMEvents?MMEvents.current(EVMODE):null;return e?`<span class="evchip">${e.emoji} ${esc(e.name)}</span>`:''}
 async function loadTheme(){try{const r=await fetch('/api/theme',{cache:'no-store'});if(!r.ok)return;const d=await r.json();if(d.mode&&d.mode!==EVMODE){EVMODE=d.mode;store.set('mm_theme',d.mode)}applyTheme()}catch(e){}}

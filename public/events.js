@@ -16,7 +16,7 @@
     { id: 'halloween', name: 'Halloween', emoji: '🎃', greet: 'Joyeux Halloween !', c1: '#1a1033', c2: '#7a3199', parts: ['🎃', '🦇', '👻', '🕸️'], win: y => [U(y, 10, 24), U(y, 10, 31)] },
     { id: 'vertieres', name: 'Bataille de Vertières (18 novembre)', emoji: '🇭🇹', greet: 'Gloire à Vertières !', c1: '#00209f', c2: '#d21034', parts: ['🇭🇹', '⭐', '🇭🇹'], win: y => [U(y, 11, 14), U(y, 11, 18)] },
     { id: 'noel', name: 'Noël', emoji: '🎄', greet: 'Joyeux Noël !', c1: '#0b4d2c', c2: '#b3122b', parts: ['❄️', '🎄', '⭐', '🎁'], win: y => [U(y, 12, 12), U(y, 12, 25)] },
-    { id: 'nouvelan', name: 'Nouvel An · Indépendance', emoji: '🎆', greet: 'Bonne année ! Bonne fête de l\'Indépendance !', c1: '#14213d', c2: '#b8860b', parts: ['🎆', '✨', '🎉', '🥂'], win: y => [U(y, 12, 26), U(y + 1, 1, 3)] },
+    { id: 'nouvelan', name: 'Nouvel An · Indépendance', emoji: '🎆', greet: 'Bonne année ! Bonne Indépendance !', c1: '#14213d', c2: '#b8860b', parts: ['🎆', '✨', '🎉', '🥂'], win: y => [U(y, 12, 26), U(y + 1, 1, 3)] },
     { id: 'valentin', name: 'Saint-Valentin', emoji: '❤️', greet: 'Joyeuse Saint-Valentin !', c1: '#8c1135', c2: '#e0457b', parts: ['❤️', '💖', '🌹', '💕'], win: y => [U(y, 2, 8), U(y, 2, 14)] },
     { id: 'carnaval', name: 'Carnaval', emoji: '🎭', greet: 'Bon Carnaval !', c1: '#6a1b9a', c2: '#ef6c00', parts: ['🎭', '🥁', '🎊', '🎺'], win: y => { const mg = easter(y) - 47 * DAY; return [mg - 12 * DAY, mg]; } },
     { id: 'paques', name: 'Pâques', emoji: '🐣', greet: 'Joyeuses Pâques !', c1: '#2f7d68', c2: '#7a5fb3', parts: ['🐣', '🌷', '🥚', '🐰'], win: y => { const e = easter(y); return [e - 5 * DAY, e + DAY]; } },
